@@ -1,0 +1,45 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Dependencies
+**/node_modules/
+
+# Build outputs
+**/.next/
+**/out/
+**/dist/
+**/build/
+**/coverage/
+**/.turbo/
+**/.vercel/
+
+# Hardhat / Solidity generated files
+smart-contract/artifacts/
+smart-contract/cache/
+smart-contract/typechain-types/
+smart-contract/deployments.json
+
+# Runtime artifacts
+**/uploads/
+**/tmp/
+**/temp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Secrets / keys
+*.pem
+*.key
+*.crt
+*.p12
+*.keystore
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

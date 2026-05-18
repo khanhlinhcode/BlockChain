@@ -1,0 +1,22 @@
+{
+  "framework": "nextjs",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@next_public_api_url",
+    "NEXT_PUBLIC_CONTRACT_ADDRESS": "@next_public_contract_address",
+    "NEXT_PUBLIC_CHAIN_ID": "@next_public_chain_id",
+    "NEXT_PUBLIC_IPFS_GATEWAY": "@next_public_ipfs_gateway"
+  },
+  "rewrites": [
+    {
+      "source": "/verify/:path*",
+      "destination": "/verify/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://YOUR_BACKEND_DOMAIN/api/:path*"
+    }
+  ]
+}
