@@ -1,6 +1,10 @@
 # CertChain
 
 CertChain là hệ thống cấp, quản trị và xác thực chứng chỉ bằng blockchain. Dữ liệu xác thực cuối cùng nằm trên smart contract, còn MongoDB dùng để phục vụ dashboard, tìm kiếm, QR và nghiệp vụ quản trị.
+![alt text](image.png)
+![alt text](image)
+![alt text](image)
+![alt text](image)
 
 ## Thành Phần Chính
 
@@ -159,7 +163,7 @@ curl -s -X POST http://localhost:8545 \
 Hardhat local trả chain id:
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":"0x7a69"}
+{ "jsonrpc": "2.0", "id": 1, "result": "0x7a69" }
 ```
 
 ### Seed Tài Khoản Admin
@@ -637,4 +641,3 @@ MongoDB   IPFS    CertRegistry smart contract
                       v
               Hardhat local / Ethereum Sepolia
 ```
-
