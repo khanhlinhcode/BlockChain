@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useDropzone } from "react-dropzone";
 import { Upload, Loader2, CheckCircle } from "lucide-react";
 import { api } from "@/lib/api";
+import { getFriendlyError } from "@/lib/errorMessages";
 import { useLanguage } from "@/context/LanguageContext";
 
 type IssueFormData = {
@@ -52,7 +53,7 @@ export default function IssueForm() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"], "image/*": [".png", ".jpg", ".jpeg"] },
+    accept: { "application/pdf": [".pdf"] },
     maxFiles: 1,
     maxSize: 10 * 1024 * 1024,
   });
@@ -68,7 +69,7 @@ export default function IssueForm() {
       setError(null);
 
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("pdfFile", file);
       formData.append("recipientName", data.recipientName);
       formData.append("recipientEmail", data.recipientEmail || "");
       formData.append("courseName", data.courseName);
@@ -82,8 +83,8 @@ export default function IssueForm() {
       setTimeout(() => {
         router.push("/admin/certificates");
       }, 2000);
-    } catch (err: any) {
-      setError(err.response?.data?.error || t("legacyIssue.failed"));
+    } catch (err: unknown) {
+      setError(getFriendlyError(err, t("legacyIssue.failed")));
     } finally {
       setLoading(false);
     }

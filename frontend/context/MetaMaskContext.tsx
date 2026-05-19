@@ -16,10 +16,12 @@ import { useLanguage } from "@/context/LanguageContext";
 
 type ChainInfo = { chainId: number | null; name: string };
 
+type EthereumEventListener = ((accounts: string[]) => void) | (() => void);
+
 interface EthereumProvider {
-  request: (args: { method: string; params?: unknown[] | object }) => Promise<any>;
-  on?: (event: string, cb: (...args: any[]) => void) => void;
-  removeListener?: (event: string, cb: (...args: any[]) => void) => void;
+  request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>;
+  on?: (event: string, cb: EthereumEventListener) => void;
+  removeListener?: (event: string, cb: EthereumEventListener) => void;
 }
 
 export interface MetaMaskContextValue {
@@ -217,8 +219,13 @@ export function MetaMaskProvider({ children }: { children: ReactNode }) {
           params: [{ chainId: toHexChainId(targetChainId) }],
         });
         await syncState(undefined, { forceAccount: shouldRestoreWalletSession() });
-      } catch (err: any) {
-        if (err?.code === 4902) {
+      } catch (err: unknown) {
+        const code =
+          typeof err === "object" && err !== null && "code" in err
+            ? (err as { code?: unknown }).code
+            : undefined;
+
+        if (code === 4902) {
           const chain = SUPPORTED_CHAINS[targetChainId];
           if (!chain) throw err;
 
@@ -276,7 +283,7 @@ export function MetaMaskProvider({ children }: { children: ReactNode }) {
       ethereum.removeListener?.("accountsChanged", onAccountsChanged);
       ethereum.removeListener?.("chainChanged", onChainChanged);
     };
-  }, [syncState]);
+  }, [disconnect, syncState]);
 
   const isCorrectNetwork = chainId === CHAIN_ID;
 

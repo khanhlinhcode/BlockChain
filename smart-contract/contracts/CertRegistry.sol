@@ -29,6 +29,7 @@ contract CertRegistry is Ownable {
     mapping(bytes32 => VerificationRecord[]) private verificationHistory;
     mapping(address => bool) public admins;
     bytes32[] private allCertHashes;
+    uint256 private adminCount;
 
     event CertIssued(bytes32 indexed certHash, string certId, address indexed issuer, uint256 issuedAt);
     event CertVerified(bytes32 indexed certHash, address verifier, uint256 verifiedAt);
@@ -47,12 +48,13 @@ contract CertRegistry is Ownable {
     }
 
     modifier notRevoked(bytes32 _hash) {
-        require(!certsByHash[_hash].isRevoked, "Certificate is revoked");
+        require(!certsByHash[_hash].isRevoked, "Already revoked");
         _;
     }
 
     constructor() Ownable(msg.sender) {
         admins[msg.sender] = true;
+        adminCount = 1;
         emit AdminAdded(msg.sender);
     }
 
@@ -60,13 +62,15 @@ contract CertRegistry is Ownable {
         require(_admin != address(0), "Zero address");
         require(!admins[_admin], "Already an admin");
         admins[_admin] = true;
+        adminCount++;
         emit AdminAdded(_admin);
     }
 
     function removeAdmin(address _admin) external onlyAdmin {
-        require(_admin != owner(), "Cannot remove owner");
         require(admins[_admin], "Not an admin");
+        require(adminCount > 1, "Cannot remove last admin");
         admins[_admin] = false;
+        adminCount--;
         emit AdminRemoved(_admin);
     }
 
@@ -83,8 +87,8 @@ contract CertRegistry is Ownable {
         string calldata _issuingOrg
     ) external onlyAdmin {
         require(_hash != bytes32(0), "Invalid certificate hash");
-        require(certsByHash[_hash].issuedAt == 0, "Hash already registered");
-        require(!certIdUsed[_certId], "CertId already used");
+        require(certsByHash[_hash].issuedAt == 0, "Certificate already exists");
+        require(!certIdUsed[_certId], "Certificate ID already used");
         require(bytes(_certId).length > 0, "Empty certId");
         require(bytes(_ipfsCID).length > 0, "Empty IPFS CID");
         require(bytes(_recipientName).length > 0, "Empty recipient name");

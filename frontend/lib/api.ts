@@ -39,6 +39,8 @@ type CertListParams = {
 const API_BASE_URL =
   typeof window === "undefined" && process.env.SERVER_API_URL
     ? process.env.SERVER_API_URL
+    : typeof window !== "undefined"
+    ? "/api"
     : process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 const IS_DEV = process.env.NODE_ENV === "development";
 
@@ -236,7 +238,12 @@ function extractResponseData<T>(payload: unknown): T {
 
   if (response.data !== undefined) return response.data;
 
-  const { success, ...rest } = response;
+  const rest: Record<string, unknown> = {};
+  Object.entries(response).forEach(([key, value]) => {
+    if (key !== "success") {
+      rest[key] = value;
+    }
+  });
   return rest as T;
 }
 
@@ -319,6 +326,14 @@ apiClient.interceptors.request.use(
         config.headers = {} as InternalAxiosRequestConfig["headers"];
       }
       (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+    }
+
+    if (config.method?.toLowerCase() === "get") {
+      if (!config.headers) {
+        config.headers = {} as InternalAxiosRequestConfig["headers"];
+      }
+      (config.headers as Record<string, string>)["Cache-Control"] = "no-cache";
+      (config.headers as Record<string, string>).Pragma = "no-cache";
     }
 
     if (IS_DEV) {
@@ -533,7 +548,10 @@ export const certApi = {
       },
     });
 
-    const payload = extractResponseData<Record<string, unknown>>(response.data);
+    const payload = isRecord(response.data) ? response.data : {};
+    if (payload.success === false) {
+      throw new Error(asString(payload.error, asString(payload.message, "Request failed")));
+    }
     const pagination = isRecord(payload.pagination) ? payload.pagination : {};
 
     const rows = Array.isArray(payload.data)
@@ -568,6 +586,13 @@ export const certApi = {
     );
     const payload = extractResponseData<Record<string, unknown>>(response.data);
     return { txHash: asString(payload.txHash) };
+  },
+
+  async syncFromChain(txHash: string): Promise<Certificate> {
+    const response = await apiClient.post("/certificates/sync-from-chain", { txHash });
+    const payload = extractResponseData<Record<string, unknown>>(response.data);
+    const cert = isRecord(payload.certificate) ? payload.certificate : payload;
+    return normalizeCertificate(cert);
   },
 
   async getQR(certId: string): Promise<Blob> {
@@ -653,6 +678,8 @@ export const api = {
   getMe: () => authApi.getMe(),
 
   issueCertificate: (formData: FormData) => certApi.issue(formData),
+
+  syncCertificateFromChain: (txHash: string) => certApi.syncFromChain(txHash),
 
   getCertificates: async (
     page = 1,

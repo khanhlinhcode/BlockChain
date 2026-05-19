@@ -1,23 +1,10 @@
-const PinataSDK = require("@pinata/sdk");
-const { Readable } = require("stream");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-let pinata;
-
-function getPinata() {
-  if (!pinata) {
-    pinata = new PinataSDK(
-      process.env.PINATA_API_KEY,
-      process.env.PINATA_SECRET_KEY
-    );
-  }
-  return pinata;
-}
-
 const GATEWAY = process.env.PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs";
 const LOCAL_IPFS_DIR = path.join(__dirname, "../../uploads/ipfs");
+const PINATA_API_BASE = "https://api.pinata.cloud/pinning";
 
 function ensureLocalIpfsDir() {
   if (!fs.existsSync(LOCAL_IPFS_DIR)) {
@@ -33,18 +20,62 @@ function hasPinataCredentials() {
   return true;
 }
 
+function pinataHeaders(extra = {}) {
+  return {
+    pinata_api_key: process.env.PINATA_API_KEY,
+    pinata_secret_api_key: process.env.PINATA_SECRET_KEY,
+    ...extra,
+  };
+}
+
 function toLocalCid(seed) {
   const digest = crypto.createHash("sha256").update(seed).digest("hex");
   return `bafy${digest.slice(0, 56)}`;
 }
 
+function sanitizeFilename(filename, fallback) {
+  const cleaned = String(filename || "")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 140);
+  return cleaned || fallback;
+}
+
+async function parsePinataResponse(response) {
+  const text = await response.text();
+  let payload;
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { message: text };
+  }
+
+  if (!response.ok) {
+    const message = payload.error || payload.message || `Pinata request failed with ${response.status}`;
+    throw new Error(message);
+  }
+
+  if (!payload.IpfsHash) {
+    throw new Error("Pinata response did not include IpfsHash");
+  }
+
+  return payload;
+}
+
 /**
- * Upload a PDF buffer to IPFS via Pinata.
+ * Upload a PDF buffer to IPFS via Pinata REST API.
+ * Falls back to local deterministic storage when Pinata credentials are absent.
  * @param {Buffer} buffer - File buffer
  * @param {string} filename - Original filename
  * @returns {Promise<{cid: string, url: string}>}
  */
 async function uploadPDFToIPFS(buffer, filename) {
+  if (!Buffer.isBuffer(buffer)) {
+    throw new TypeError("uploadPDFToIPFS expects a Buffer input");
+  }
+
+  const safeFilename = sanitizeFilename(filename, "certificate.pdf");
+
   if (!hasPinataCredentials()) {
     ensureLocalIpfsDir();
     const cid = toLocalCid(buffer);
@@ -56,15 +87,22 @@ async function uploadPDFToIPFS(buffer, filename) {
     };
   }
 
-  const sdk = getPinata();
-  const stream = Readable.from(buffer);
-  stream.path = filename; // Pinata requires a path property
+  if (typeof fetch !== "function" || typeof FormData === "undefined" || typeof Blob === "undefined") {
+    throw new Error("Node 20+ fetch/FormData support is required for Pinata uploads");
+  }
 
-  const result = await sdk.pinFileToIPFS(stream, {
-    pinataMetadata: { name: filename },
-    pinataOptions: { cidVersion: 1 },
+  const formData = new FormData();
+  formData.append("file", new Blob([buffer], { type: "application/pdf" }), safeFilename);
+  formData.append("pinataMetadata", JSON.stringify({ name: safeFilename }));
+  formData.append("pinataOptions", JSON.stringify({ cidVersion: 1 }));
+
+  const response = await fetch(`${PINATA_API_BASE}/pinFileToIPFS`, {
+    method: "POST",
+    headers: pinataHeaders(),
+    body: formData,
   });
 
+  const result = await parsePinataResponse(response);
   return {
     cid: result.IpfsHash,
     url: `${GATEWAY}/${result.IpfsHash}`,
@@ -72,25 +110,33 @@ async function uploadPDFToIPFS(buffer, filename) {
 }
 
 /**
- * Upload JSON metadata to IPFS via Pinata.
+ * Upload JSON metadata to IPFS via Pinata REST API.
  * @param {object} metadata - JSON data
  * @param {string} name - Metadata name
  * @returns {Promise<{cid: string}>}
  */
 async function uploadJSONToIPFS(metadata, name) {
+  const safeName = sanitizeFilename(name, "metadata.json");
+
   if (!hasPinataCredentials()) {
     ensureLocalIpfsDir();
     const payload = JSON.stringify(metadata ?? {}, null, 2);
-    const cid = toLocalCid(`${name}:${payload}`);
+    const cid = toLocalCid(`${safeName}:${payload}`);
     const outputPath = path.join(LOCAL_IPFS_DIR, `${cid}.json`);
     fs.writeFileSync(outputPath, payload, "utf-8");
     return { cid };
   }
 
-  const sdk = getPinata();
-  const result = await sdk.pinJSONToIPFS(metadata, {
-    pinataMetadata: { name },
+  const response = await fetch(`${PINATA_API_BASE}/pinJSONToIPFS`, {
+    method: "POST",
+    headers: pinataHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      pinataMetadata: { name: safeName },
+      pinataContent: metadata ?? {},
+    }),
   });
+
+  const result = await parsePinataResponse(response);
   return { cid: result.IpfsHash };
 }
 
@@ -102,8 +148,19 @@ async function unpinFile(cid) {
   if (!hasPinataCredentials()) {
     return;
   }
-  const sdk = getPinata();
-  await sdk.unpin(cid);
+
+  const safeCid = String(cid || "").trim();
+  if (!safeCid) return;
+
+  const response = await fetch(`${PINATA_API_BASE}/unpin/${encodeURIComponent(safeCid)}`, {
+    method: "DELETE",
+    headers: pinataHeaders(),
+  });
+
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text();
+    throw new Error(text || `Pinata unpin failed with ${response.status}`);
+  }
 }
 
 module.exports = { uploadPDFToIPFS, uploadJSONToIPFS, unpinFile };

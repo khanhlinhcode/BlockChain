@@ -5,21 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowUpRight,
-  Activity,
-  Database,
-  FileCheck2,
+  BadgeCheck,
+  Clock3,
+  FileSearch,
   Github,
   LockKeyhole,
-  Network,
   ShieldCheck,
 } from "lucide-react";
-import {
-  API_BASE_URL,
-  CHAIN_ID,
-  CONTRACT_ADDRESS,
-  SUPPORTED_CHAINS,
-} from "@/lib/constants";
-import { truncateHash } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
 
 const productLinks = [
@@ -28,15 +20,34 @@ const productLinks = [
   { href: "/admin/login", labelKey: "footer.adminPortal" },
 ];
 
-const trustLinks = [
+const workflowLinks = [
   { href: "/#verify-section", labelKey: "footer.uploadPdf" },
   { href: "/#verify-section", labelKey: "footer.idLookup" },
   { href: "/admin/login", labelKey: "footer.issuerConsole" },
 ];
 
-function apiHealthUrl() {
-  return API_BASE_URL.replace(/\/api\/?$/, "").replace(/\/$/, "") + "/health";
-}
+const trustSignals = [
+  {
+    icon: ShieldCheck,
+    labelKey: "footer.signalTamperProof",
+    bodyKey: "footer.signalTamperProofBody",
+  },
+  {
+    icon: Clock3,
+    labelKey: "footer.signalInstant",
+    bodyKey: "footer.signalInstantBody",
+  },
+  {
+    icon: FileSearch,
+    labelKey: "footer.signalAudit",
+    bodyKey: "footer.signalAuditBody",
+  },
+  {
+    icon: BadgeCheck,
+    labelKey: "footer.signalIssuer",
+    bodyKey: "footer.signalIssuerBody",
+  },
+];
 
 function LogoMark() {
   return (
@@ -74,50 +85,25 @@ function FooterLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function StatusCard({
-  icon,
-  label,
-  value,
-  href,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  href?: string;
-}) {
-  const content = (
-    <div className="surface-panel flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:border-[var(--teal-border)] hover:bg-[var(--teal-glow)]">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--teal-border)] bg-[var(--teal-glow)] text-[var(--teal)]">
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">
-          {label}
-        </span>
-        <span className="mono mt-0.5 block truncate text-[14px] font-semibold text-[var(--text-primary)]">
-          {value}
-        </span>
-      </span>
-    </div>
-  );
-
-  if (!href) return content;
-
+function TrustSignalCard({ icon, label, body }: { icon: ReactNode; label: string; body: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      {content}
-    </a>
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--nav-soft-bg)] p-4 transition-all duration-200 hover:border-[var(--teal-border)] hover:bg-[var(--teal-glow)]">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--teal-border)] bg-[var(--teal-glow)] text-[var(--teal)]">
+          {icon}
+        </span>
+        <div>
+          <h3 className="text-[15px] font-bold text-[var(--text-primary)]">{label}</h3>
+          <p className="mt-1 text-[13px] leading-5 text-[var(--text-secondary)]">{body}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export default function Footer() {
   const pathname = usePathname();
   const { t } = useLanguage();
-  const chain = SUPPORTED_CHAINS[CHAIN_ID];
-  const explorer = chain?.explorer;
-  const hasContract = Boolean(CONTRACT_ADDRESS && !/^0x0{40}$/i.test(CONTRACT_ADDRESS));
-  const contractUrl =
-    explorer && hasContract ? `${explorer}/address/${CONTRACT_ADDRESS}` : undefined;
   const year = new Date().getFullYear();
 
   if (pathname.startsWith("/admin")) return null;
@@ -128,7 +114,7 @@ export default function Footer() {
       <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-[52rem] -translate-x-1/2 rounded-full bg-[var(--teal-glow)] blur-3xl" />
 
       <div className="relative mx-auto max-w-7xl px-6 py-14 sm:px-8 lg:px-10">
-        <div className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr_0.8fr_1.1fr]">
+        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.72fr_0.75fr_1.35fr]">
           <section>
             <LogoMark />
             <p className="mt-5 max-w-md text-[16px] leading-7 text-[var(--text-secondary)]">
@@ -163,7 +149,7 @@ export default function Footer() {
               {t("footer.workflows")}
             </h2>
             <nav className="mt-5 flex flex-col gap-3">
-              {trustLinks.map((item) => (
+              {workflowLinks.map((item) => (
                 <FooterLink key={item.labelKey} href={item.href} label={t(item.labelKey)} />
               ))}
             </nav>
@@ -171,31 +157,23 @@ export default function Footer() {
 
           <section>
             <h2 className="font-display text-[16px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]">
-              {t("footer.systemStatus")}
+              {t("footer.trustLayer")}
             </h2>
-            <div className="mt-5 grid gap-3">
-              <StatusCard
-                icon={<Network size={17} />}
-                label={t("footer.network")}
-                value={chain?.name || `Chain ${CHAIN_ID}`}
-              />
-              <StatusCard
-                icon={<FileCheck2 size={17} />}
-                label={t("footer.contract")}
-                value={hasContract ? truncateHash(CONTRACT_ADDRESS, 8) : t("common.notConfigured")}
-                href={contractUrl}
-              />
-              <StatusCard
-                icon={<Database size={17} />}
-                label={t("footer.backend")}
-                value={t("footer.online")}
-                href={apiHealthUrl()}
-              />
-              <StatusCard
-                icon={<Activity size={17} />}
-                label={t("footer.status")}
-                value={t("footer.ready")}
-              />
+            <p className="mt-4 text-[15px] leading-7 text-[var(--text-secondary)]">
+              {t("footer.trustLayerBody")}
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              {trustSignals.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <TrustSignalCard
+                    key={item.labelKey}
+                    icon={<Icon size={18} />}
+                    label={t(item.labelKey)}
+                    body={t(item.bodyKey)}
+                  />
+                );
+              })}
             </div>
           </section>
         </div>

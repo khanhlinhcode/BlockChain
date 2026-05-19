@@ -13,6 +13,7 @@ router.use(verifyJWT);
 // Stats must come before :certId to avoid route conflict
 router.get("/stats", cert.stats);
 router.get("/audit", cert.audit);
+router.post("/sync-from-chain", cert.syncFromChain);
 
 router.post("/issue", ...uploadPdfField, handleUploadError, cert.issue);
 router.get("/", cert.list);

@@ -72,9 +72,23 @@ const corsOptions = {
 app.use(helmet());
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(morgan("dev"));
+if (process.env.NODE_ENV !== "test" && process.env.JEST_WORKER_ID === undefined) {
+  app.use(morgan("dev"));
+}
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Dynamic API data changes after blockchain transactions and MongoDB writes.
+// Disable conditional GET/ETag caching so admin tables never render stale 304
+// responses after issuing, revoking, or syncing certificates.
+app.set("etag", false);
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  next();
+});
 
 // ── Static files (QR codes) ──
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -122,12 +136,25 @@ app.use((err, _req, res, _next) => {
       .json({ success: false, error: "File too large. Maximum 10MB allowed." });
   }
 
-  console.error(err.stack || err.message);
-  res.status(err.status || 500).json({
+  const isDatabaseUnavailable =
+    err.name === "MongoServerSelectionError" ||
+    err.name === "MongooseServerSelectionError" ||
+    /ECONNREFUSED.*27017|MongoDB connection/i.test(err.message || "");
+  const isServiceUnavailable =
+    err.status === 503 ||
+    isDatabaseUnavailable ||
+    /IPFS service|Blockchain service|RPC is unavailable/i.test(err.message || "");
+
+  if (process.env.NODE_ENV !== "test") {
+    console.error(err.stack || err.message);
+  }
+  res.status(isServiceUnavailable ? 503 : err.status || 500).json({
     success: false,
     error:
       process.env.NODE_ENV === "production"
-        ? "Internal server error"
+        ? isServiceUnavailable
+          ? "Service temporarily unavailable"
+          : "Internal server error"
         : err.message,
   });
 });

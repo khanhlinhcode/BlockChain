@@ -3,6 +3,27 @@ const Certificate = require("../models/Certificate");
 const hashService = require("../services/hashService");
 const blockchainService = require("../services/blockchainService");
 
+const CERT_ID_LOOKUP_PATTERN = /^[A-Z0-9][A-Z0-9._:-]{0,79}$/;
+const VERIFY_CACHE_TTL_MS = 30 * 1000;
+const verifyByIdCache = new Map();
+
+function getCachedVerifyById(certId) {
+  const cached = verifyByIdCache.get(certId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    verifyByIdCache.delete(certId);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setCachedVerifyById(certId, payload) {
+  verifyByIdCache.set(certId, {
+    expiresAt: Date.now() + VERIFY_CACHE_TTL_MS,
+    payload,
+  });
+}
+
 /**
  * Build a standardized verification response.
  */
@@ -82,6 +103,18 @@ exports.verifyById = async (req, res, next) => {
   try {
     const certId = String(req.body?.certId || "").trim().toUpperCase();
     if (!certId) return res.status(400).json({ success: false, error: "certId is required" });
+    if (!CERT_ID_LOOKUP_PATTERN.test(certId)) {
+      return res.status(400).json({ success: false, error: "Invalid certId format" });
+    }
+
+    const cached = getCachedVerifyById(certId);
+    if (cached) {
+      return res.json({
+        ...cached,
+        verifiedAt: new Date().toISOString(),
+        cached: true,
+      });
+    }
 
     // DB lookup (fast)
     const cert = await Certificate.findOne({ certId });
@@ -98,7 +131,14 @@ exports.verifyById = async (req, res, next) => {
     }
 
     // On-chain verification (authoritative)
-    const onChain = await blockchainService.verifyCertOnChain(cert.certHash);
+    let onChain;
+    try {
+      onChain = await blockchainService.verifyCertOnChain(cert.certHash);
+    } catch (error) {
+      error.status = 503;
+      error.message = `Blockchain service temporarily unavailable: ${error.message}`;
+      throw error;
+    }
 
     // Increment verification count
     cert.verificationCount += 1;
@@ -106,7 +146,12 @@ exports.verifyById = async (req, res, next) => {
     await appendVerificationLog(cert, req);
     await cert.save();
 
-    return res.json(buildResponse(cert, onChain));
+    const payload = buildResponse(cert, onChain);
+    if (payload.exists) {
+      setCachedVerifyById(certId, payload);
+    }
+
+    return res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -142,7 +187,14 @@ exports.verifyByFile = async (req, res, next) => {
     }
 
     // On-chain verification
-    const onChain = await blockchainService.verifyCertOnChain(certHash);
+    let onChain;
+    try {
+      onChain = await blockchainService.verifyCertOnChain(certHash);
+    } catch (error) {
+      error.status = 503;
+      error.message = `Blockchain service temporarily unavailable: ${error.message}`;
+      throw error;
+    }
 
     cert.verificationCount += 1;
     cert.lastVerifiedAt = new Date();
@@ -168,11 +220,26 @@ exports.verifyByHash = async (req, res, next) => {
     try {
       certHash = blockchainService.normalizeHash(rawHash);
     } catch {
-      return res.status(400).json({ success: false, error: "Invalid certHash format" });
+      return res.json({
+        success: true,
+        exists: false,
+        isValid: false,
+        isRevoked: false,
+        certificate: null,
+        blockchain: null,
+        verifiedAt: new Date().toISOString(),
+      });
     }
 
     const cert = await Certificate.findOne({ certHash });
-    const onChain = await blockchainService.verifyCertOnChain(certHash);
+    let onChain;
+    try {
+      onChain = await blockchainService.verifyCertOnChain(certHash);
+    } catch (error) {
+      error.status = 503;
+      error.message = `Blockchain service temporarily unavailable: ${error.message}`;
+      throw error;
+    }
 
     if (cert) {
       cert.verificationCount += 1;

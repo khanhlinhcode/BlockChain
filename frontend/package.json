@@ -1,13 +1,14 @@
 {
   "name": "certchain-frontend",
   "version": "1.0.0",
-  "description": "CertChain - Next.js 14 Frontend for Certificate Verification",
+  "description": "CertChain - Next.js 16 Frontend for Certificate Verification",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit",
+    "test": "jest --coverage"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.0",
@@ -30,9 +31,9 @@
     "jsqr": "^1.4.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.303.0",
-    "next": "^14.0.0",
+    "next": "^16.2.6",
     "next-themes": "^0.4.6",
-    "postcss": "^8.4.0",
+    "postcss": "^8.5.14",
     "qrcode.react": "^3.1.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
@@ -48,15 +49,21 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "^14.0.0",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "ts-jest": "^29.4.9",
     "typescript": "^5.3.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.14"
   }
 }

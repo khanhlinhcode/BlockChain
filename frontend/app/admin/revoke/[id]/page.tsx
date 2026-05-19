@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ShieldAlert, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { getFriendlyError } from "@/lib/errorMessages";
 import { useLanguage } from "@/context/LanguageContext";
 import type { CertificateRecord } from "@/types";
 
@@ -45,8 +46,8 @@ export default function RevokePage() {
           }
           setCert(match);
         }
-      } catch (err: any) {
-        const message = err.response?.data?.error || err.message || t("revoke.notFound");
+      } catch (err: unknown) {
+        const message = getFriendlyError(err, t("revoke.notFound"));
         setError(message);
         toast.error(message);
       } finally {
@@ -68,8 +69,8 @@ export default function RevokePage() {
       await api.revokeCertificate(cert.certHash, reason);
       toast.success(t("revoke.success"));
       router.push("/admin/certificates");
-    } catch (err: any) {
-      const message = err.response?.data?.error || t("revoke.failed");
+    } catch (err: unknown) {
+      const message = getFriendlyError(err, t("revoke.failed"));
       setError(message);
       toast.error(message);
     } finally {

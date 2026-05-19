@@ -51,6 +51,7 @@ export default function VerifyPanel() {
   const {
     loading,
     verificationStep,
+    currentStep,
     result,
     error,
     lastQueryId,
@@ -144,6 +145,10 @@ export default function VerifyPanel() {
               className="mt-5"
               onSubmit={(event) => {
                 event.preventDefault();
+                if (!certId.trim()) {
+                  setError(t("verify.idRequired"));
+                  return;
+                }
                 void verifyById(certId);
               }}
             >
@@ -177,7 +182,7 @@ export default function VerifyPanel() {
 
               <button
                 type="submit"
-                disabled={loading || !certId.trim()}
+                disabled={loading}
                 className="btn-primary mt-5 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl text-base"
               >
                 {loading ? <Loader2 size={18} className="animate-spin" /> : null}
@@ -226,6 +231,7 @@ export default function VerifyPanel() {
               <CertResult
                 loading={loading}
                 verificationStep={verificationStep}
+                currentStep={currentStep}
                 result={result}
                 queriedId={lastQueryId}
                 error={error}

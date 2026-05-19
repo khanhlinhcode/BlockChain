@@ -1,54 +1,37 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
 import { getFriendlyError } from "@/lib/errorMessages";
+import { useVerify } from "@/hooks/useVerify";
 import type { VerifyResult } from "@/types";
 
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function stepFromText(step: string): number {
+  const lower = step.toLowerCase();
+  if (lower.includes("hash")) return 0;
+  if (lower.includes("kết nối") || lower.includes("connect")) return 1;
+  if (lower.includes("truy vấn") || lower.includes("contract")) return 1;
+  if (lower.includes("xác thực") || lower.includes("result")) return 3;
+  return step ? 1 : -1;
 }
 
 export function useVerificationFlow() {
-  const [loading, setLoading] = useState(false);
+  const verifier = useVerify();
   const [verificationStep, setVerificationStep] = useState(-1);
-  const [result, setResult] = useState<VerifyResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [lastQueryId, setLastQueryId] = useState("");
 
-  const run = useCallback(async (verifyPromise: Promise<VerifyResult>) => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
+  useEffect(() => {
+    setVerificationStep(stepFromText(verifier.currentStep));
+  }, [verifier.currentStep]);
 
-    try {
-      setVerificationStep(0);
-      await wait(300);
-
-      setVerificationStep(1);
-      const data = await verifyPromise;
-
-      setVerificationStep(2);
-      await wait(200);
-      setVerificationStep(3);
-      await wait(200);
-
-      setResult(data);
-      if (data.exists && data.isValid) {
-        toast.success("Certificate verified successfully");
-      } else if (data.exists && data.isRevoked) {
-        toast.warning("Certificate is revoked");
-      } else {
-        toast.warning("Certificate not found");
-      }
-    } catch (err: unknown) {
-      const message = getFriendlyError(err, "Unable to verify certificate.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-      setVerificationStep(-1);
+  const notifyResult = useCallback((data: VerifyResult | null) => {
+    if (!data) return;
+    if (data.exists && data.isValid) {
+      toast.success("Certificate verified directly on blockchain");
+    } else if (data.exists && data.isRevoked) {
+      toast.warning("Certificate is revoked");
+    } else {
+      toast.warning("Certificate not found");
     }
   }, []);
 
@@ -56,45 +39,58 @@ export function useVerificationFlow() {
     async (certId: string) => {
       const normalizedId = certId.trim().toUpperCase();
       if (!normalizedId) {
-        setError("Please enter a certificate ID.");
+        verifier.setError("Please enter a certificate ID.");
         return;
       }
 
       setLastQueryId(normalizedId);
-      await run(api.verifyById(normalizedId));
+      try {
+        const data = await verifier.verifyById(normalizedId);
+        notifyResult(data);
+      } catch (err: unknown) {
+        const message = getFriendlyError(err, "Unable to verify certificate.");
+        verifier.setError(message);
+        toast.error(message);
+      }
     },
-    [run]
+    [notifyResult, verifier]
   );
 
   const verifyByFile = useCallback(
     async (file: File | null) => {
       if (!file) {
-        setError("Please upload a certificate PDF.");
+        verifier.setError("Please upload a certificate PDF.");
         return;
       }
 
       setLastQueryId("");
-      await run(api.verifyByFile(file));
+      try {
+        const data = await verifier.verifyByFile(file);
+        notifyResult(data);
+      } catch (err: unknown) {
+        const message = getFriendlyError(err, "Unable to verify certificate.");
+        verifier.setError(message);
+        toast.error(message);
+      }
     },
-    [run]
+    [notifyResult, verifier]
   );
 
   const reset = useCallback(() => {
-    setLoading(false);
+    verifier.reset();
     setVerificationStep(-1);
-    setResult(null);
-    setError(null);
     setLastQueryId("");
-  }, []);
+  }, [verifier]);
 
   return {
-    loading,
+    loading: verifier.loading,
     verificationStep,
-    result,
-    error,
+    currentStep: verifier.currentStep,
+    result: verifier.result,
+    error: verifier.error,
     lastQueryId,
-    hasResult: loading || Boolean(result) || Boolean(error),
-    setError,
+    hasResult: verifier.loading || Boolean(verifier.result) || Boolean(verifier.error),
+    setError: verifier.setError,
     reset,
     verifyById,
     verifyByFile,

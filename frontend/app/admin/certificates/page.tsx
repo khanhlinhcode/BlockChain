@@ -190,6 +190,7 @@ export default function AdminCertificatesPage() {
 
   const [downloadingQr, setDownloadingQr] = useState<string | null>(null);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [syncingChain, setSyncingChain] = useState(false);
 
   useEffect(() => {
     document.title = `${t("certs.title")} | CertChain`;
@@ -407,6 +408,47 @@ export default function AdminCertificatesPage() {
     }
   };
 
+  const syncFromChain = async () => {
+    try {
+      setSyncingChain(true);
+      const events = await api.getAuditEvents({ eventType: "issued", limit: 200 });
+      const txHashes = Array.from(
+        new Set(
+          events
+            .map((event) => event.txHash)
+            .filter((txHash): txHash is string => /^0x[0-9a-fA-F]{64}$/.test(txHash || ""))
+        )
+      );
+
+      if (!txHashes.length) {
+        toast.warning(t("certs.syncNoEvents"));
+        return;
+      }
+
+      let synced = 0;
+      let failed = 0;
+      for (const txHash of txHashes) {
+        try {
+          await api.syncCertificateFromChain(txHash);
+          synced += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+
+      await load();
+      if (failed > 0) {
+        toast.warning(t("certs.syncPartial", { synced, failed }));
+      } else {
+        toast.success(t("certs.syncSuccess", { count: synced }));
+      }
+    } catch (err: unknown) {
+      toast.error(getFriendlyError(err, t("certs.syncFailed")));
+    } finally {
+      setSyncingChain(false);
+    }
+  };
+
   const openDrawer = async (item: CertificateRecord) => {
     setActiveCert(item);
     setHistory(null);
@@ -553,6 +595,16 @@ export default function AdminCertificatesPage() {
             <button type="button" onClick={exportCsv} className="btn-outline inline-flex items-center gap-2 px-3 py-2 text-[15px]">
               <Download size={14} />
               {t("certs.exportCsv", { count: selectedCertificates.length })}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void syncFromChain()}
+              disabled={syncingChain}
+              className="btn-outline inline-flex items-center gap-2 px-3 py-2 text-[15px]"
+            >
+              {syncingChain ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {t("certs.syncFromChain")}
             </button>
 
             <button

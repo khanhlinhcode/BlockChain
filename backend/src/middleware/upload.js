@@ -3,7 +3,11 @@ const multer = require("multer");
 const storage = multer.memoryStorage();
 
 const fileFilter = (_req, file, cb) => {
-  if (file.mimetype === "application/pdf") {
+  const originalName = String(file.originalname || "").toLowerCase();
+  const hasPdfExtension = originalName.endsWith(".pdf");
+  const hasPdfMime = file.mimetype === "application/pdf";
+
+  if (hasPdfMime && hasPdfExtension) {
     cb(null, true);
   } else {
     cb(new Error("Only PDF files are allowed"), false);

@@ -170,14 +170,14 @@ describe("Certificate API", () => {
     expect(res.body.success).toBe(false);
   });
 
-  test("POST /api/verify/by-hash with invalid hash returns 400", async () => {
+  test("POST /api/verify/by-hash with invalid hash returns exists=false", async () => {
     const res = await request(app)
       .post("/api/verify/by-hash")
       .send({ certHash: "invalid_hash" });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(String(res.body.error || "")).toMatch(/invalid/i);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.exists).toBe(false);
   });
 
   test("GET /api/verify/:certId/history for unknown cert returns 404", async () => {

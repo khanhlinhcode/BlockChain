@@ -15,6 +15,7 @@
 **/coverage/
 **/.turbo/
 **/.vercel/
+**/*.tsbuildinfo
 
 # Hardhat / Solidity generated files
 smart-contract/artifacts/

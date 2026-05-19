@@ -49,6 +49,7 @@ export interface VerifyResult {
   certificate?: Certificate;
   error?: string;
   verifiedAt: string;
+  source?: "backend" | "blockchain";
   message?: string;
   blockchain?: BlockchainCertificate;
 }

@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { href: "/#verify-section", labelKey: "nav.verify" },
   { href: "/#how-it-works", labelKey: "nav.howItWorks" },
   { href: "/admin/login", labelKey: "nav.forOrganizations" },
+  { href: "/about", labelKey: "nav.about" },
 ];
 
 function Logo() {
@@ -62,12 +63,12 @@ export default function Navbar() {
             <Logo />
           </div>
 
-          <nav className="hidden items-center gap-2 justify-self-center rounded-[22px] border border-[var(--border)] bg-[var(--nav-soft-bg)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:flex xl:gap-3">
+          <nav className="hidden items-center gap-2 justify-self-center rounded-[22px] border border-[var(--border)] bg-[var(--nav-soft-bg)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:flex xl:gap-2">
             {NAV_LINKS.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="min-w-[136px] rounded-2xl px-5 py-2.5 text-center text-[15px] font-semibold text-[var(--text-secondary)] transition-all duration-200 hover:bg-[var(--teal-glow)] hover:text-[var(--text-primary)] xl:min-w-[154px] 2xl:min-w-[172px]"
+                className="min-w-[120px] rounded-2xl px-4 py-2.5 text-center text-[15px] font-semibold text-[var(--text-secondary)] transition-all duration-200 hover:bg-[var(--teal-glow)] hover:text-[var(--text-primary)] xl:min-w-[138px] 2xl:min-w-[154px]"
               >
                 {t(item.labelKey)}
               </Link>

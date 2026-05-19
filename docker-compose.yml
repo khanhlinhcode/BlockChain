@@ -1,13 +1,11 @@
-version: "3.8"
-
 services:
   mongodb:
     image: mongo:7.0
     container_name: certchain-mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-certchain}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS:-certchain_dev_password}
       MONGO_INITDB_DATABASE: certchain
     ports:
       - "27017:27017"
@@ -31,12 +29,21 @@ services:
       - "5000:5000"
     env_file: ./backend/.env
     environment:
-      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASS}@mongodb:27017/certchain?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_ROOT_USER:-certchain}:${MONGO_ROOT_PASS:-certchain_dev_password}@mongodb:27017/certchain?authSource=admin
     volumes:
       - ./backend/uploads:/app/uploads
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000/api}
+        NEXT_PUBLIC_CONTRACT_ADDRESS: ${NEXT_PUBLIC_CONTRACT_ADDRESS:-}
+        NEXT_PUBLIC_CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:-11155111}
+        NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:-}
+        NEXT_PUBLIC_ALCHEMY_KEY: ${NEXT_PUBLIC_ALCHEMY_KEY:-}
+        NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-https://gateway.pinata.cloud/ipfs}
+        NEXT_PUBLIC_ISSUING_ORG: ${NEXT_PUBLIC_ISSUING_ORG:-CertChain}
     container_name: certchain-frontend
     restart: unless-stopped
     depends_on:
@@ -44,6 +51,14 @@ services:
     ports:
       - "3000:3000"
     env_file: ./frontend/.env.local
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000/api}
+      NEXT_PUBLIC_CONTRACT_ADDRESS: ${NEXT_PUBLIC_CONTRACT_ADDRESS:-}
+      NEXT_PUBLIC_CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:-11155111}
+      NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:-}
+      NEXT_PUBLIC_ALCHEMY_KEY: ${NEXT_PUBLIC_ALCHEMY_KEY:-}
+      NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-https://gateway.pinata.cloud/ipfs}
+      NEXT_PUBLIC_ISSUING_ORG: ${NEXT_PUBLIC_ISSUING_ORG:-CertChain}
 
 volumes:
   mongodb_data:

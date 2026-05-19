@@ -60,7 +60,6 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/certchain
       ALCHEMY_URL: http://hardhat:8545
       CONTRACT_ADDRESS: 0x5FbDB2315678afecb367f032d93F642f64180aa3
-      ADMIN_PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     command: sh -c "npm ci && npm run dev"
@@ -86,6 +85,7 @@ services:
       SERVER_API_URL: http://backend:5001/api
       NEXT_PUBLIC_CONTRACT_ADDRESS: 0x5FbDB2315678afecb367f032d93F642f64180aa3
       NEXT_PUBLIC_CHAIN_ID: 31337
+      NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:-http://localhost:8545}
       NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-https://gateway.pinata.cloud/ipfs}
       NEXT_PUBLIC_ISSUING_ORG: ${NEXT_PUBLIC_ISSUING_ORG:-CertChain}
     command: sh -c "npm ci && npm run dev -- -H 0.0.0.0"

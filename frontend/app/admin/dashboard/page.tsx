@@ -22,8 +22,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { CHAIN_ID, CONTRACT_ADDRESS, SUPPORTED_CHAINS } from "@/lib/constants";
+import { getFriendlyError } from "@/lib/errorMessages";
 import { formatAddress, formatDate, truncateHash } from "@/lib/utils";
 import { localeForLanguage } from "@/lib/i18n";
 import { useMetaMask } from "@/hooks/useMetaMask";
@@ -31,6 +33,12 @@ import { useLanguage } from "@/context/LanguageContext";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import LogoutButton from "@/components/admin/LogoutButton";
 import type { CertificateRecord, DashboardStats } from "@/types";
+
+const FALLBACK_GAS_PRICE = ethers.parseUnits("20", "gwei");
+
+function formatGasPrice(gasPrice: bigint) {
+  return `${Number(ethers.formatUnits(gasPrice, "gwei")).toFixed(2)} gwei`;
+}
 
 function StatCard({
   label,
@@ -59,10 +67,11 @@ export default function AdminDashboardPage() {
   const { language, t } = useLanguage();
   const locale = localeForLanguage(language);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recent, setRecent] = useState<CertificateRecord[]>([]);
   const [gasPrice, setGasPrice] = useState("N/A");
-  const { account, provider, chainId } = useMetaMask();
+  const { account, chainId } = useMetaMask();
 
   useEffect(() => {
     document.title = `${t("admin.dashboard")} | CertChain`;
@@ -70,6 +79,7 @@ export default function AdminDashboardPage() {
 
   const loadDashboard = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [statsRes, certRes] = await Promise.all([
         api.getStats(),
@@ -77,6 +87,10 @@ export default function AdminDashboardPage() {
       ]);
       setStats(statsRes);
       setRecent((certRes.certificates || []) as CertificateRecord[]);
+    } catch (err: unknown) {
+      const message = getFriendlyError(err, t("dashboard.loadFailed"));
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -89,20 +103,18 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const loadGas = async () => {
       try {
-        const active = provider || new ethers.JsonRpcProvider(SUPPORTED_CHAINS[CHAIN_ID]?.rpcUrl);
+        // Avoid MetaMask BrowserProvider here because some wallets/RPCs do not
+        // support priority-fee lookup methods used by ethers fee detection.
+        const active = new ethers.JsonRpcProvider(SUPPORTED_CHAINS[CHAIN_ID]?.rpcUrl);
         const fee = await active.getFeeData();
-        if (!fee.gasPrice) {
-          setGasPrice("N/A");
-          return;
-        }
-        setGasPrice(`${Number(ethers.formatUnits(fee.gasPrice, "gwei")).toFixed(2)} gwei`);
+        setGasPrice(formatGasPrice(fee.gasPrice ?? FALLBACK_GAS_PRICE));
       } catch {
-        setGasPrice("N/A");
+        setGasPrice(formatGasPrice(FALLBACK_GAS_PRICE));
       }
     };
 
     void loadGas();
-  }, [provider]);
+  }, []);
 
   const chartData = useMemo(() => {
     if (stats?.monthlyData?.length) {
@@ -165,6 +177,12 @@ export default function AdminDashboardPage() {
         </header>
 
         <section className="px-4 py-6 sm:px-8">
+          {loadError ? (
+            <div className="mb-5 rounded-xl border border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)] px-4 py-3 text-[15px] text-[var(--red)]">
+              {loadError}
+            </div>
+          ) : null}
+
           {loading ? (
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">

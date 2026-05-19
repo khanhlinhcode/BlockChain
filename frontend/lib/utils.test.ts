@@ -36,6 +36,13 @@ describe("utils", () => {
     expect(hash1).toBe(hash2);
   });
 
+  test("calculateFileHash changes when content changes", async () => {
+    const hash1 = await calculateFileHash(createMockFile("content-a"));
+    const hash2 = await calculateFileHash(createMockFile("content-b"));
+
+    expect(hash1).not.toBe(hash2);
+  });
+
   test("formatAddress truncates correctly", () => {
     expect(formatAddress("0x1234567890abcdef1234567890abcdef12345678")).toBe(
       "0x1234...5678"
@@ -66,7 +73,7 @@ describe("utils", () => {
   });
 
   test("formatDate returns readable value for valid date", () => {
-    expect(formatDate("2024-01-15T00:00:00.000Z")).toContain("2024");
+    expect(formatDate("2024-01-15T00:00:00.000Z")).toBe("January 15, 2024");
   });
 
   test("formatDate returns invalid marker for bad value", () => {

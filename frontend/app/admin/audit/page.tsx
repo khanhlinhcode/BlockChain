@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Filter, Loader2, RefreshCw } from "lucide-react";
+import { Filter, RefreshCw } from "lucide-react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { CHAIN_ID, SUPPORTED_CHAINS } from "@/lib/constants";

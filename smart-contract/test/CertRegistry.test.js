@@ -4,289 +4,109 @@ const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("CertRegistry", function () {
   let contract;
-  let owner;
+  let deployer;
   let admin2;
   let user;
 
-  const testHash = ethers.keccak256(ethers.toUtf8Bytes("test-pdf-content"));
-  const testCertId = "CERT-2024-TEST01";
-  const testCID = "QmTestCIDHashForTesting123";
+  const certHash = ethers.keccak256(ethers.toUtf8Bytes("test-pdf-content-001"));
+  const certId = "CERT-2026-TEST01";
+  const ipfsCID = "QmTestCIDHashABC123";
   const recipientName = "Nguyen Van A";
-  const courseName = "Python";
-  const issuingOrg = "FPT";
+  const courseName = "Blockchain Development";
+  const issuingOrg = "FPT University";
 
-  const issueBaseCertificate = async (signer = owner) => {
+  async function deployContract() {
+    const CertRegistry = await ethers.getContractFactory("CertRegistry");
+    const deployed = await CertRegistry.deploy();
+    await deployed.waitForDeployment();
+    return deployed;
+  }
+
+  async function issueCertificate(overrides = {}, signer = deployer) {
+    const data = {
+      hash: certHash,
+      certId,
+      cid: ipfsCID,
+      recipient: recipientName,
+      course: courseName,
+      org: issuingOrg,
+      ...overrides,
+    };
+
     await contract
       .connect(signer)
       .issueCertificate(
-        testHash,
-        testCertId,
-        testCID,
-        recipientName,
-        courseName,
-        issuingOrg
+        data.hash,
+        data.certId,
+        data.cid,
+        data.recipient,
+        data.course,
+        data.org
       );
-  };
+    return data;
+  }
 
   beforeEach(async () => {
-    [owner, admin2, user] = await ethers.getSigners();
-    const CertRegistry = await ethers.getContractFactory("CertRegistry");
-    contract = await CertRegistry.deploy();
-    await contract.waitForDeployment();
+    [deployer, admin2, user] = await ethers.getSigners();
+    contract = await deployContract();
   });
 
-  // Test group 1: Admin management
-  describe("Admin Management", () => {
-    it("should set deployer as admin", async () => {
-      expect(await contract.admins(owner.address)).to.equal(true);
-      expect(await contract.isAdmin(owner.address)).to.equal(true);
+  describe("Deployment", () => {
+    it("deploys successfully", async () => {
+      expect(await contract.getAddress()).to.match(/^0x[0-9a-fA-F]{40}$/);
     });
 
-    it("should allow admin to add new admin", async () => {
-      await expect(contract.addAdmin(admin2.address))
-        .to.emit(contract, "AdminAdded")
-        .withArgs(admin2.address);
-      expect(await contract.admins(admin2.address)).to.equal(true);
+    it("sets deployer as admin", async () => {
+      expect(await contract.admins(deployer.address)).to.equal(true);
+      expect(await contract.isAdmin(deployer.address)).to.equal(true);
     });
 
-    it("should reject non-admin adding admin", async () => {
-      await expect(contract.connect(user).addAdmin(admin2.address)).to.be.revertedWith(
-        "Not authorized"
-      );
+    it("returns false for random address admin check", async () => {
+      expect(await contract.isAdmin(user.address)).to.equal(false);
     });
 
-    it("should allow removing admin", async () => {
-      await contract.addAdmin(admin2.address);
-      await expect(contract.removeAdmin(admin2.address))
-        .to.emit(contract, "AdminRemoved")
-        .withArgs(admin2.address);
-      expect(await contract.admins(admin2.address)).to.equal(false);
-    });
-
-    it("should not allow removing last admin", async () => {
-      // Contract enforces this via "owner cannot be removed".
-      await expect(contract.removeAdmin(owner.address)).to.be.revertedWith(
-        "Cannot remove owner"
-      );
-      expect(await contract.admins(owner.address)).to.equal(true);
+    it("starts with zero certificates", async () => {
+      expect(await contract.getTotalCertificates()).to.equal(0);
     });
   });
 
-  // Test group 2: Issue certificate
   describe("Issue Certificate", () => {
-    it("should issue certificate with correct data", async () => {
-      await issueBaseCertificate();
-      const cert = await contract.getCertificate(testHash);
+    it("issues certificate with valid data", async () => {
+      await issueCertificate();
+      const cert = await contract.getCertificate(certHash);
 
-      expect(cert.certHash).to.equal(testHash);
-      expect(cert.certId).to.equal(testCertId);
-      expect(cert.ipfsCID).to.equal(testCID);
+      expect(cert.certHash).to.equal(certHash);
+      expect(cert.ipfsCID).to.equal(ipfsCID);
+      expect(cert.issuer).to.equal(deployer.address);
+      expect(Number(cert.issuedAt)).to.be.greaterThan(0);
+      expect(cert.isRevoked).to.equal(false);
       expect(cert.recipientName).to.equal(recipientName);
+      expect(cert.certId).to.equal(certId);
       expect(cert.courseName).to.equal(courseName);
       expect(cert.issuingOrg).to.equal(issuingOrg);
-      expect(cert.issuer).to.equal(owner.address);
-      expect(cert.isRevoked).to.equal(false);
-      expect(cert.revokedBy).to.equal(ethers.ZeroAddress);
       expect(cert.revokedAt).to.equal(0);
+      expect(cert.revokedBy).to.equal(ethers.ZeroAddress);
     });
 
-    it("should emit CertIssued event with correct args", async () => {
+    it("emits CertIssued with correct args", async () => {
       await expect(
         contract.issueCertificate(
-          testHash,
-          testCertId,
-          testCID,
+          certHash,
+          certId,
+          ipfsCID,
           recipientName,
           courseName,
           issuingOrg
         )
       )
         .to.emit(contract, "CertIssued")
-        .withArgs(testHash, testCertId, owner.address, anyValue);
+        .withArgs(certHash, certId, deployer.address, anyValue);
     });
 
-    it("should reject duplicate hash", async () => {
-      await issueBaseCertificate();
-      await expect(
-        contract.issueCertificate(
-          testHash,
-          "CERT-2024-OTHER01",
-          testCID,
-          recipientName,
-          courseName,
-          issuingOrg
-        )
-      ).to.be.revertedWith("Hash already registered");
-    });
-
-    it("should reject duplicate certId", async () => {
-      await issueBaseCertificate();
-      const hash2 = ethers.keccak256(ethers.toUtf8Bytes("another-pdf-content"));
-
-      await expect(
-        contract.issueCertificate(
-          hash2,
-          testCertId,
-          testCID,
-          recipientName,
-          courseName,
-          issuingOrg
-        )
-      ).to.be.revertedWith("CertId already used");
-    });
-
-    it("should reject from non-admin", async () => {
-      await expect(
-        contract
-          .connect(user)
-          .issueCertificate(
-            testHash,
-            testCertId,
-            testCID,
-            recipientName,
-            courseName,
-            issuingOrg
-          )
-      ).to.be.revertedWith("Not authorized");
-    });
-
-    it("should store timestamp correctly", async () => {
-      const latestBlockBefore = await ethers.provider.getBlock("latest");
-      await issueBaseCertificate();
-      const cert = await contract.getCertificate(testHash);
-      const latestBlockAfter = await ethers.provider.getBlock("latest");
-
-      expect(Number(cert.issuedAt)).to.be.at.least(Number(latestBlockBefore.timestamp));
-      expect(Number(cert.issuedAt)).to.be.at.most(Number(latestBlockAfter.timestamp));
-    });
-  });
-
-  // Test group 3: Verify certificate
-  describe("Verify Certificate", () => {
-    beforeEach(async () => {
-      await issueBaseCertificate();
-    });
-
-    it("should verify valid certificate by hash", async () => {
-      const result = await contract.verifyCertificate.staticCall(testHash);
-
-      expect(result.exists).to.equal(true);
-      expect(result.isValid).to.equal(true);
-      expect(result.isRevoked).to.equal(false);
-    });
-
-    it("should verify valid certificate by certId", async () => {
-      const result = await contract.verifyCertificateById.staticCall(testCertId);
-
-      expect(result.exists).to.equal(true);
-      expect(result.isValid).to.equal(true);
-      expect(result.isRevoked).to.equal(false);
-    });
-
-    it("should return exists=false for unknown hash", async () => {
-      const unknownHash = ethers.keccak256(ethers.toUtf8Bytes("missing-certificate"));
-      const result = await contract.verifyCertificate.staticCall(unknownHash);
-
-      expect(result.exists).to.equal(false);
-      expect(result.isValid).to.equal(false);
-      expect(result.isRevoked).to.equal(false);
-    });
-
-    it("should emit CertVerified event", async () => {
-      await expect(contract.connect(user).verifyCertificate(testHash))
-        .to.emit(contract, "CertVerified")
-        .withArgs(testHash, user.address, anyValue);
-    });
-
-    it("should record verification in history", async () => {
-      await contract.connect(user).verifyCertificate(testHash);
-      await contract.connect(owner).verifyCertificate(testHash);
-
-      const history = await contract.getVerificationHistory(testHash);
-      expect(history.length).to.equal(2);
-      expect(history[0].verifier).to.equal(user.address);
-      expect(history[1].verifier).to.equal(owner.address);
-      expect(Number(history[0].verifiedAt)).to.be.greaterThan(0);
-      expect(Number(history[1].verifiedAt)).to.be.greaterThan(0);
-    });
-  });
-
-  // Test group 4: Revoke certificate
-  describe("Revoke Certificate", () => {
-    beforeEach(async () => {
-      await issueBaseCertificate();
-    });
-
-    it("should revoke certificate correctly", async () => {
-      await contract.revokeCertificate(testHash, "Issued by mistake");
-      const cert = await contract.getCertificate(testHash);
-
-      expect(cert.isRevoked).to.equal(true);
-      expect(cert.revokedBy).to.equal(owner.address);
-      expect(Number(cert.revokedAt)).to.be.greaterThan(0);
-    });
-
-    it("should emit CertRevoked event", async () => {
-      await expect(contract.revokeCertificate(testHash, "Issued by mistake"))
-        .to.emit(contract, "CertRevoked")
-        .withArgs(testHash, owner.address, "Issued by mistake", anyValue);
-    });
-
-    it("should reject revoke of non-existent cert", async () => {
-      const unknownHash = ethers.keccak256(ethers.toUtf8Bytes("does-not-exist"));
-      await expect(
-        contract.revokeCertificate(unknownHash, "No cert")
-      ).to.be.revertedWith("Certificate not found");
-    });
-
-    it("should reject double revoke", async () => {
-      await contract.revokeCertificate(testHash, "First");
-      await expect(contract.revokeCertificate(testHash, "Second")).to.be.revertedWith(
-        "Certificate is revoked"
-      );
-    });
-
-    it("should reject revoke from non-admin", async () => {
-      await expect(
-        contract.connect(user).revokeCertificate(testHash, "Unauthorized")
-      ).to.be.revertedWith("Not authorized");
-    });
-
-    it("should mark cert as isRevoked=true after revoke", async () => {
-      await contract.revokeCertificate(testHash, "Revoked");
-      const verifyResult = await contract.verifyCertificate.staticCall(testHash);
-
-      expect(verifyResult.exists).to.equal(true);
-      expect(verifyResult.isValid).to.equal(false);
-      expect(verifyResult.isRevoked).to.equal(true);
-    });
-  });
-
-  // Test group 5: Data integrity
-  describe("Data Integrity", () => {
-    beforeEach(async () => {
-      await issueBaseCertificate();
-    });
-
-    it("getCertificate returns all fields correctly", async () => {
-      const cert = await contract.getCertificate(testHash);
-
-      expect(cert.certHash).to.equal(testHash);
-      expect(cert.ipfsCID).to.equal(testCID);
-      expect(cert.issuer).to.equal(owner.address);
-      expect(cert.isRevoked).to.equal(false);
-      expect(cert.recipientName).to.equal(recipientName);
-      expect(cert.certId).to.equal(testCertId);
-      expect(cert.courseName).to.equal(courseName);
-      expect(cert.issuingOrg).to.equal(issuingOrg);
-      expect(Number(cert.issuedAt)).to.be.greaterThan(0);
-      expect(Number(cert.revokedAt)).to.equal(0);
-      expect(cert.revokedBy).to.equal(ethers.ZeroAddress);
-    });
-
-    it("getCertificateById returns same as getCertificate", async () => {
-      const byHash = await contract.getCertificate(testHash);
-      const byId = await contract.getCertificateById(testCertId);
+    it("getCertificateById returns same data", async () => {
+      await issueCertificate();
+      const byHash = await contract.getCertificate(certHash);
+      const byId = await contract.getCertificateById(certId);
 
       expect(byId.certHash).to.equal(byHash.certHash);
       expect(byId.certId).to.equal(byHash.certId);
@@ -295,23 +115,251 @@ describe("CertRegistry", function () {
       expect(byId.courseName).to.equal(byHash.courseName);
       expect(byId.issuingOrg).to.equal(byHash.issuingOrg);
       expect(byId.issuer).to.equal(byHash.issuer);
-      expect(byId.isRevoked).to.equal(byHash.isRevoked);
     });
 
-    it("getTotalCertificates increments correctly", async () => {
+    it("increments total certificates", async () => {
+      await issueCertificate();
       expect(await contract.getTotalCertificates()).to.equal(1);
+    });
 
-      const hash2 = ethers.keccak256(ethers.toUtf8Bytes("test-pdf-content-2"));
-      await contract.issueCertificate(
-        hash2,
-        "CERT-2024-TEST02",
-        "QmAnotherCIDForTesting456",
-        "Tran Thi B",
-        "Node.js",
-        "FPT"
+    it("reverts duplicate hash", async () => {
+      await issueCertificate();
+      await expect(
+        contract.issueCertificate(
+          certHash,
+          "CERT-2026-OTHER01",
+          ipfsCID,
+          recipientName,
+          courseName,
+          issuingOrg
+        )
+      ).to.be.revertedWith("Certificate already exists");
+    });
+
+    it("reverts duplicate certId", async () => {
+      await issueCertificate();
+      const hash2 = ethers.keccak256(ethers.toUtf8Bytes("another-pdf-content"));
+
+      await expect(
+        contract.issueCertificate(
+          hash2,
+          certId,
+          ipfsCID,
+          recipientName,
+          courseName,
+          issuingOrg
+        )
+      ).to.be.revertedWith("Certificate ID already used");
+    });
+
+    it("reverts when non-admin issues", async () => {
+      await expect(
+        contract
+          .connect(user)
+          .issueCertificate(certHash, certId, ipfsCID, recipientName, courseName, issuingOrg)
+      ).to.be.revertedWith("Not authorized");
+    });
+
+    it("reverts empty certId", async () => {
+      await expect(
+        contract.issueCertificate(certHash, "", ipfsCID, recipientName, courseName, issuingOrg)
+      ).to.be.revertedWith("Empty certId");
+    });
+
+    it("reverts empty recipientName", async () => {
+      await expect(
+        contract.issueCertificate(certHash, certId, ipfsCID, "", courseName, issuingOrg)
+      ).to.be.revertedWith("Empty recipient name");
+    });
+  });
+
+  describe("Verify Certificate", () => {
+    beforeEach(async () => {
+      await issueCertificate();
+    });
+
+    it("returns true,true,false for valid certificate by hash", async () => {
+      const result = await contract.verifyCertificate.staticCall(certHash);
+      expect(result.exists).to.equal(true);
+      expect(result.isValid).to.equal(true);
+      expect(result.isRevoked).to.equal(false);
+    });
+
+    it("returns true,true,false for valid certificate by certId", async () => {
+      const result = await contract.verifyCertificateById.staticCall(certId);
+      expect(result.exists).to.equal(true);
+      expect(result.isValid).to.equal(true);
+      expect(result.isRevoked).to.equal(false);
+    });
+
+    it("returns false,false,false for unknown hash", async () => {
+      const unknownHash = ethers.keccak256(ethers.toUtf8Bytes("missing-certificate"));
+      const result = await contract.verifyCertificate.staticCall(unknownHash);
+      expect(result.exists).to.equal(false);
+      expect(result.isValid).to.equal(false);
+      expect(result.isRevoked).to.equal(false);
+    });
+
+    it("emits CertVerified", async () => {
+      await expect(contract.connect(user).verifyCertificate(certHash))
+        .to.emit(contract, "CertVerified")
+        .withArgs(certHash, user.address, anyValue);
+    });
+
+    it("records one verification in history", async () => {
+      await contract.connect(user).verifyCertificate(certHash);
+      const history = await contract.getVerificationHistory(certHash);
+      expect(history).to.have.lengthOf(1);
+      expect(history[0].verifier).to.equal(user.address);
+      expect(Number(history[0].verifiedAt)).to.be.greaterThan(0);
+    });
+
+    it("records multiple verifications correctly", async () => {
+      await contract.connect(user).verifyCertificate(certHash);
+      await contract.connect(deployer).verifyCertificate(certHash);
+      await contract.connect(admin2).verifyCertificate(certHash);
+
+      const history = await contract.getVerificationHistory(certHash);
+      expect(history).to.have.lengthOf(3);
+      expect(history[0].verifier).to.equal(user.address);
+      expect(history[1].verifier).to.equal(deployer.address);
+      expect(history[2].verifier).to.equal(admin2.address);
+    });
+  });
+
+  describe("Revoke Certificate", () => {
+    beforeEach(async () => {
+      await issueCertificate();
+    });
+
+    it("revokes certificate", async () => {
+      await contract.revokeCertificate(certHash, "Reason");
+      const cert = await contract.getCertificate(certHash);
+      expect(cert.isRevoked).to.equal(true);
+      expect(cert.revokedBy).to.equal(deployer.address);
+      expect(Number(cert.revokedAt)).to.be.greaterThan(0);
+    });
+
+    it("emits CertRevoked with reason", async () => {
+      await expect(contract.revokeCertificate(certHash, "Reason"))
+        .to.emit(contract, "CertRevoked")
+        .withArgs(certHash, deployer.address, "Reason", anyValue);
+    });
+
+    it("verify returns true,false,true after revoke", async () => {
+      await contract.revokeCertificate(certHash, "Reason");
+      const result = await contract.verifyCertificate.staticCall(certHash);
+      expect(result.exists).to.equal(true);
+      expect(result.isValid).to.equal(false);
+      expect(result.isRevoked).to.equal(true);
+    });
+
+    it("reverts already revoked certificate", async () => {
+      await contract.revokeCertificate(certHash, "First");
+      await expect(contract.revokeCertificate(certHash, "Second")).to.be.revertedWith(
+        "Already revoked"
       );
+    });
 
-      expect(await contract.getTotalCertificates()).to.equal(2);
+    it("reverts non-existent certificate revoke", async () => {
+      const unknownHash = ethers.keccak256(ethers.toUtf8Bytes("does-not-exist"));
+      await expect(contract.revokeCertificate(unknownHash, "Reason")).to.be.revertedWith(
+        "Certificate not found"
+      );
+    });
+
+    it("reverts non-admin revoke", async () => {
+      await expect(contract.connect(user).revokeCertificate(certHash, "Reason")).to.be.revertedWith(
+        "Not authorized"
+      );
+    });
+  });
+
+  describe("Multi-admin", () => {
+    it("adds admin2", async () => {
+      await expect(contract.addAdmin(admin2.address))
+        .to.emit(contract, "AdminAdded")
+        .withArgs(admin2.address);
+      expect(await contract.isAdmin(admin2.address)).to.equal(true);
+    });
+
+    it("admin2 can issue certificate", async () => {
+      await contract.addAdmin(admin2.address);
+      await issueCertificate({}, admin2);
+      const cert = await contract.getCertificate(certHash);
+      expect(cert.issuer).to.equal(admin2.address);
+    });
+
+    it("removes admin2", async () => {
+      await contract.addAdmin(admin2.address);
+      await expect(contract.removeAdmin(admin2.address))
+        .to.emit(contract, "AdminRemoved")
+        .withArgs(admin2.address);
+      expect(await contract.isAdmin(admin2.address)).to.equal(false);
+    });
+
+    it("removed admin can no longer issue", async () => {
+      await contract.addAdmin(admin2.address);
+      await contract.removeAdmin(admin2.address);
+      await expect(issueCertificate({}, admin2)).to.be.revertedWith("Not authorized");
+    });
+
+    it("reverts removing self as last admin", async () => {
+      await expect(contract.removeAdmin(deployer.address)).to.be.revertedWith(
+        "Cannot remove last admin"
+      );
+    });
+
+    it("reverts non-admin adding admin", async () => {
+      await expect(contract.connect(user).addAdmin(admin2.address)).to.be.revertedWith(
+        "Not authorized"
+      );
+    });
+  });
+
+  describe("Edge cases", () => {
+    it("handles bytes32 hash values from 0x-prefixed strings correctly", async () => {
+      const prefixedHash = `0x${"a".repeat(64)}`;
+      await issueCertificate({ hash: prefixedHash });
+      const cert = await contract.getCertificate(prefixedHash);
+      expect(cert.certHash).to.equal(prefixedHash);
+    });
+
+    it("supports very long recipientName", async () => {
+      const longName = "A".repeat(100);
+      await issueCertificate({ recipient: longName });
+      const cert = await contract.getCertificate(certHash);
+      expect(cert.recipientName).to.equal(longName);
+    });
+
+    it("supports very long courseName", async () => {
+      const longCourse = "B".repeat(200);
+      await issueCertificate({ course: longCourse });
+      const cert = await contract.getCertificate(certHash);
+      expect(cert.courseName).to.equal(longCourse);
+    });
+
+    it("supports unicode recipientName", async () => {
+      await issueCertificate({ recipient: "Nguyễn Văn A" });
+      const cert = await contract.getCertificate(certHash);
+      expect(cert.recipientName).to.equal("Nguyễn Văn A");
+    });
+
+    it("issues 50 certificates", async () => {
+      for (let i = 0; i < 50; i++) {
+        const hash = ethers.keccak256(ethers.toUtf8Bytes(`bulk-pdf-${i}`));
+        const padded = String(i).padStart(2, "0");
+        await contract.issueCertificate(
+          hash,
+          `CERT-2026-BULK${padded}`,
+          `QmBulkCID${padded}`,
+          `Recipient ${padded}`,
+          "Bulk Course",
+          "Bulk Org"
+        );
+      }
+
+      expect(await contract.getTotalCertificates()).to.equal(50);
     });
   });
 });

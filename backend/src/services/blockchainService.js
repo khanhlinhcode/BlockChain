@@ -142,6 +142,11 @@ async function getContract() {
   return contract;
 }
 
+async function getProvider() {
+  await initDefaultClient();
+  return provider;
+}
+
 function resetDefaultClient() {
   try {
     if (provider && typeof provider.destroy === "function") {
@@ -208,6 +213,12 @@ function mapCertificate(raw) {
     courseName: raw.courseName,
     issuingOrg: raw.issuingOrg,
   };
+}
+
+async function getCertOnChain(certHash) {
+  const c = await getContract();
+  const cert = await c.getCertificate(normalizeHash(certHash));
+  return mapCertificate(cert);
 }
 
 /**
@@ -792,6 +803,9 @@ async function testBlockchainService() {
 }
 
 module.exports = {
+  getProvider,
+  getContract,
+  getCertOnChain,
   issueCertOnChain,
   verifyCertOnChain,
   revokeCertOnChain,

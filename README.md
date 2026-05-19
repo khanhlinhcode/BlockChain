@@ -1,30 +1,101 @@
 # CertChain
 
-CertChain là hệ thống cấp và xác thực chứng chỉ bằng blockchain.
+CertChain là hệ thống cấp, quản trị và xác thực chứng chỉ bằng blockchain. Dữ liệu xác thực cuối cùng nằm trên smart contract, còn MongoDB dùng để phục vụ dashboard, tìm kiếm, QR và nghiệp vụ quản trị.
 
-Project gồm 3 phần chính:
+## Thành Phần Chính
 
-- `smart-contract`: Hardhat + Solidity, lưu trạng thái chứng chỉ on-chain.
-- `backend`: Express + MongoDB + ethers.js, xử lý API, IPFS, QR, JWT và giao dịch blockchain.
-- `frontend`: Next.js 14, giao diện xác thực công khai và dashboard quản trị.
+- `smart-contract`: Hardhat + Solidity, contract `CertRegistry.sol` lưu chứng chỉ on-chain.
+- `backend`: Node.js + Express + MongoDB + ethers.js, xử lý admin API, IPFS, QR, JWT, đồng bộ dữ liệu và giao dịch ghi blockchain.
+- `frontend`: Next.js + TypeScript, gồm trang xác thực công khai và dashboard quản trị.
 
-## 1. Cách Chạy Khuyến Nghị: Docker Dev
+## Luồng Hoạt Động
 
-Cách này là đơn giản nhất. Docker sẽ tự chạy đủ 4 service:
+### 1. Cấp Chứng Chỉ
+
+```txt
+Admin đăng nhập
+→ Nhập thông tin chứng chỉ
+→ Upload PDF
+→ Backend tính SHA-256 hash
+→ Backend upload PDF lên IPFS
+→ Backend hoặc MetaMask gọi smart contract issueCertificate()
+→ MongoDB lưu metadata để dashboard tra cứu nhanh
+→ Backend tạo QR trỏ tới /verify/{certId}
+```
+
+Dữ liệu quan trọng được ghi on-chain:
+
+- `certHash`
+- `certId`
+- `ipfsCID`
+- `recipientName`
+- `courseName`
+- `issuingOrg`
+- `issuer`
+- `issuedAt`
+- `isRevoked`
+
+### 2. Xác Thực Chứng Chỉ
+
+Luồng xác thực công khai hiện tại đọc trực tiếp từ blockchain:
+
+```txt
+User nhập Cert ID hoặc upload PDF
+→ Frontend dùng ethers.js gọi smart contract trực tiếp
+→ Không cần backend cho bước verify
+→ Hiển thị Valid / Revoked / Not Found
+```
+
+Nếu xác thực bằng PDF:
+
+```txt
+Frontend tính SHA-256 bằng Web Crypto API
+→ Convert thành bytes32
+→ Gọi getCertificate(hash) trên smart contract
+```
+
+Nếu xác thực bằng mã chứng chỉ:
+
+```txt
+Frontend gọi getCertificateById(certId) trên smart contract
+```
+
+### 3. QR Code
+
+```txt
+QR chứa URL /verify/{certId}
+→ Người dùng quét QR
+→ Browser mở trang verify
+→ Frontend đọc smart contract trực tiếp
+→ Hiển thị kết quả xác thực
+```
+
+### 4. Thu Hồi Chứng Chỉ
+
+```txt
+Admin chọn chứng chỉ
+→ Nhập lý do thu hồi
+→ Backend gọi revokeCertificate()
+→ Blockchain cập nhật isRevoked = true
+→ MongoDB cập nhật trạng thái
+→ Verify lại sẽ hiển thị Certificate Revoked
+```
+
+## Chạy Nhanh Bằng Docker Dev
+
+Đây là cách chạy khuyến nghị. Docker tự chạy đủ service cần thiết:
 
 - MongoDB
 - Hardhat local blockchain
-- Deploy smart contract local
+- Deploy/reuse smart contract local
 - Backend API
 - Frontend Next.js
 
-### 1.1. Yêu cầu
+### Yêu Cầu
 
-Cài trước:
-
-- Docker Desktop
-- Node.js 20+ nếu muốn chạy lệnh test/lint ngoài Docker
-- MetaMask nếu muốn test đăng nhập ví
+- Docker Desktop hoặc Docker Engine đang chạy.
+- Node.js 20+ nếu muốn chạy test/lint/build ngoài Docker.
+- MetaMask nếu muốn test đăng nhập ví hoặc ký giao dịch bằng ví.
 
 Kiểm tra Docker:
 
@@ -33,22 +104,20 @@ docker --version
 docker compose version
 ```
 
-Nếu Docker báo không kết nối được socket, hãy mở Docker Desktop trước.
-
-### 1.2. Chạy toàn bộ project
+### Khởi Chạy Toàn Bộ Project
 
 ```bash
 cd /Users/tolinh/Documents/Programming/blockchain/certchain
 ./scripts/dev-docker.sh
 ```
 
-Script này tự lấy IP LAN của máy Mac và in ra dạng:
+Script sẽ tự lấy IP LAN của máy và in ra dạng:
 
 ```txt
 CertChain Docker dev stack
 - Frontend: http://192.168.x.x:3000
 - Backend:  http://192.168.x.x:5001/api
-- Hardhat:  http://localhost:8545
+- Hardhat:  http://192.168.x.x:8545
 ```
 
 Mở trên máy Mac:
@@ -63,9 +132,39 @@ Mở trên điện thoại cùng Wi-Fi:
 http://192.168.x.x:3000
 ```
 
-### 1.3. Seed tài khoản admin
+Không dùng `localhost` trên điện thoại, vì `localhost` lúc đó là chính điện thoại chứ không phải máy Mac.
 
-Sau khi backend chạy xong, mở terminal khác:
+### Kiểm Tra Service
+
+```bash
+docker compose -f docker-compose.dev.yml ps
+```
+
+Kết quả đúng: `mongodb`, `hardhat`, `backend`, `frontend` đều `Up`; `hardhat` và `mongodb` nên có trạng thái `healthy`.
+
+Health backend:
+
+```bash
+curl -s http://localhost:5001/health
+```
+
+Health Hardhat RPC:
+
+```bash
+curl -s -X POST http://localhost:8545 \
+  -H 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
+```
+
+Hardhat local trả chain id:
+
+```json
+{"jsonrpc":"2.0","id":1,"result":"0x7a69"}
+```
+
+### Seed Tài Khoản Admin
+
+Sau khi backend chạy xong:
 
 ```bash
 curl -X POST http://localhost:5001/api/auth/seed
@@ -78,33 +177,9 @@ Username: admin
 Password: Admin@123456
 ```
 
-### 1.4. Kiểm tra service
+### Dừng Docker
 
-```bash
-docker compose -f docker-compose.dev.yml ps
-```
-
-Kết quả đúng: `mongodb`, `hardhat`, `backend`, `frontend` đều `Up`.
-
-Kiểm tra backend:
-
-```bash
-curl -s http://localhost:5001/health
-```
-
-Kết quả đúng có dạng:
-
-```json
-{
-  "status": "ok",
-  "version": "1.0.0",
-  "chain": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-}
-```
-
-### 1.5. Dừng Docker
-
-Dừng service nhưng giữ database:
+Dừng service nhưng giữ database dev:
 
 ```bash
 docker compose -f docker-compose.dev.yml down
@@ -116,68 +191,47 @@ Dừng và xóa sạch database dev:
 docker compose -f docker-compose.dev.yml down -v
 ```
 
-### 1.6. Chạy lại Docker sau khi tắt máy
+Chạy lại sau khi tắt máy:
 
 ```bash
 cd /Users/tolinh/Documents/Programming/blockchain/certchain
 ./scripts/dev-docker.sh
 ```
 
-Không cần chạy MongoDB local riêng. Docker đã chạy MongoDB trong container.
+## Docker Dev Tự Động Làm Gì?
 
-## 2. Biến Môi Trường Khi Chạy Docker
+`scripts/dev-docker.sh` tự động:
 
-Docker dev dùng `docker-compose.dev.yml` và tự override phần quan trọng sau:
+- Detect IP LAN của máy Mac.
+- Set `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_RPC_URL`, `CORS_ALLOWED_ORIGINS`.
+- Start MongoDB container.
+- Start Hardhat local node.
+- Chạy deploy contract local.
+- Reuse contract local nếu `0x5FbDB2315678afecb367f032d93F642f64180aa3` đã tồn tại, tránh lệch address.
+- Start backend và frontend.
 
-- `MONGODB_URI=mongodb://mongodb:27017/certchain`
-- `ALCHEMY_URL=http://hardhat:8545`
-- `CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3`
-- `ADMIN_PRIVATE_KEY=<Hardhat account #0>`
-- `NEXT_PUBLIC_CHAIN_ID=31337`
-- `SERVER_API_URL=http://backend:5001/api`
+Vì vậy khi chạy Docker dev:
 
-Vì vậy, khi chạy bằng Docker dev:
-
-- Không cần tự chạy `mongod`.
-- Không cần tự chạy `npx hardhat node`.
+- Không cần chạy MongoDB local.
+- Không cần chạy `npx hardhat node` thủ công.
 - Không cần deploy contract thủ công.
-- Không cần sửa `MONGODB_URI` trong `backend/.env` để trỏ tới container.
+- Không cần sửa `MONGODB_URI` trong `backend/.env` sang Docker host.
 
-### 2.1. `frontend/.env.local` khi chạy Docker
+## Biến Môi Trường
 
-File này vẫn nên có để browser dùng đúng API LAN:
+Không commit file `.env`, `.env.local` hoặc private key thật.
 
-```env
-NEXT_PUBLIC_API_URL=http://YOUR_MAC_IP:5001/api
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
-NEXT_PUBLIC_CHAIN_ID=31337
-NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs
-NEXT_PUBLIC_ISSUING_ORG=CertChain
-```
+### Backend `backend/.env`
 
-Nếu chỉ mở bằng máy Mac, có thể dùng:
+Docker dev override các biến kết nối nội bộ sau:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5001/api
+MONGODB_URI=mongodb://mongodb:27017/certchain
+ALCHEMY_URL=http://hardhat:8545
+CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
 ```
 
-Nếu mở bằng điện thoại, bắt buộc dùng IP LAN, ví dụ:
-
-```env
-NEXT_PUBLIC_API_URL=http://192.168.0.193:5001/api
-```
-
-Lấy IP LAN:
-
-```bash
-ipconfig getifaddr en0
-```
-
-### 2.2. `backend/.env` khi chạy Docker
-
-Docker dev vẫn đọc `backend/.env` cho các biến không override, ví dụ JWT, Pinata, admin seed.
-
-Ví dụ tối thiểu:
+Các biến vẫn nên có trong `backend/.env`:
 
 ```env
 PORT=5001
@@ -192,147 +246,7 @@ PINATA_API_KEY=your_pinata_key
 PINATA_SECRET_KEY=your_pinata_secret
 PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
 
-FRONTEND_URL=http://localhost:3000
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://YOUR_MAC_IP:3000
-BASE_URL=http://localhost:5001
-
-DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=Admin@123456
-```
-
-Nếu chưa có Pinata key, phần upload IPFS thật có thể lỗi. Các phần login, dashboard, verify record đã có vẫn chạy được.
-
-## 3. Cách Chạy Thủ Công Không Dùng Docker
-
-Chỉ dùng cách này khi muốn debug từng service riêng.
-
-Cần mở nhiều terminal.
-
-### 3.1. Terminal 1: MongoDB
-
-Nếu cài bằng Homebrew:
-
-```bash
-brew services start mongodb-community
-```
-
-Hoặc bản cụ thể:
-
-```bash
-brew services start mongodb-community@7.0
-```
-
-Kiểm tra:
-
-```bash
-mongosh --quiet --eval "db.adminCommand({ ping: 1 })" mongodb://127.0.0.1:27017/certchain
-```
-
-Đúng thì trả:
-
-```js
-{ ok: 1 }
-```
-
-### 3.2. Terminal 2: Hardhat local blockchain
-
-```bash
-cd /Users/tolinh/Documents/Programming/blockchain/certchain/smart-contract
-npx hardhat node
-```
-
-Giữ terminal này luôn mở.
-
-### 3.3. Terminal 3: Deploy smart contract
-
-```bash
-cd /Users/tolinh/Documents/Programming/blockchain/certchain/smart-contract
-npx hardhat run scripts/deploy.js --network localhost
-```
-
-Copy contract address sau deploy, ví dụ:
-
-```txt
-0x5FbDB2315678afecb367f032d93F642f64180aa3
-```
-
-Cập nhật vào:
-
-`backend/.env`:
-
-```env
-CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
-ALCHEMY_URL=http://127.0.0.1:8545
-ADMIN_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-`frontend/.env.local`:
-
-```env
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
-NEXT_PUBLIC_CHAIN_ID=31337
-```
-
-Private key trên là Hardhat account #0, chỉ dùng local dev.
-
-### 3.4. Terminal 4: Backend
-
-```bash
-cd /Users/tolinh/Documents/Programming/blockchain/certchain/backend
-npm ci
-npm run dev
-```
-
-Backend chạy ở:
-
-```txt
-http://localhost:5001
-```
-
-Seed admin:
-
-```bash
-curl -X POST http://localhost:5001/api/auth/seed
-```
-
-### 3.5. Terminal 5: Frontend
-
-```bash
-cd /Users/tolinh/Documents/Programming/blockchain/certchain/frontend
-npm ci
-npm run dev
-```
-
-Frontend chạy ở:
-
-```txt
-http://localhost:3000
-```
-
-## 4. File Env Mẫu Cho Chạy Thủ Công
-
-### 4.1. Backend `backend/.env`
-
-```env
-PORT=5001
-NODE_ENV=development
-MONGODB_URI=mongodb://127.0.0.1:27017/certchain
-
-JWT_SECRET=change_me_local
-JWT_EXPIRES_IN=8h
-JWT_REFRESH_SECRET=change_me_refresh_local
-JWT_REFRESH_EXPIRES_IN=7d
-
-PINATA_API_KEY=your_pinata_key
-PINATA_SECRET_KEY=your_pinata_secret
-PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
-
-ALCHEMY_URL=http://127.0.0.1:8545
-CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
-ADMIN_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-CONTRACT_DEPLOY_BLOCK=0
-AUDIT_LOOKBACK_BLOCKS=300
-AUDIT_LOG_BLOCK_WINDOW=10
+ADMIN_PRIVATE_KEY=local_hardhat_account_private_key
 
 FRONTEND_URL=http://localhost:3000
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
@@ -340,16 +254,15 @@ BASE_URL=http://localhost:5001
 
 DEFAULT_ADMIN_USERNAME=admin
 DEFAULT_ADMIN_PASSWORD=Admin@123456
+
+CONTRACT_DEPLOY_BLOCK=0
+AUDIT_LOOKBACK_BLOCKS=300
+AUDIT_LOG_BLOCK_WINDOW=10
 ```
 
-Nếu test QR bằng điện thoại, đổi `FRONTEND_URL` và `CORS_ALLOWED_ORIGINS` sang IP LAN:
+`ADMIN_PRIVATE_KEY` chỉ dùng private key local của Hardhat account khi dev. Không dùng ví thật.
 
-```env
-FRONTEND_URL=http://YOUR_MAC_IP:3000
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://YOUR_MAC_IP:3000
-```
-
-### 4.2. Frontend `frontend/.env.local`
+### Frontend `frontend/.env.local`
 
 Máy Mac local:
 
@@ -357,6 +270,8 @@ Máy Mac local:
 NEXT_PUBLIC_API_URL=http://localhost:5001/api
 NEXT_PUBLIC_CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
 NEXT_PUBLIC_CHAIN_ID=31337
+NEXT_PUBLIC_RPC_URL=http://localhost:8545
+NEXT_PUBLIC_ALCHEMY_KEY=
 NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs
 NEXT_PUBLIC_ISSUING_ORG=CertChain
 ```
@@ -367,42 +282,88 @@ NEXT_PUBLIC_ISSUING_ORG=CertChain
 NEXT_PUBLIC_API_URL=http://YOUR_MAC_IP:5001/api
 NEXT_PUBLIC_CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
 NEXT_PUBLIC_CHAIN_ID=31337
+NEXT_PUBLIC_RPC_URL=http://YOUR_MAC_IP:8545
+NEXT_PUBLIC_ALCHEMY_KEY=
 NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs
 NEXT_PUBLIC_ISSUING_ORG=CertChain
 ```
 
-Sau khi sửa env, restart service liên quan.
+Lấy IP LAN:
 
-## 5. Luồng Hoạt Động
+```bash
+ipconfig getifaddr en0
+```
 
-### 5.1. Cấp chứng chỉ
+Khi chạy bằng `./scripts/dev-docker.sh`, script đã tự inject IP LAN vào Docker container.
 
-1. Admin đăng nhập.
-2. Admin nhập người nhận, khóa học, tổ chức.
-3. Admin upload PDF.
-4. Backend tính SHA-256 hash của PDF.
-5. Backend upload PDF lên IPFS.
-6. Backend gọi smart contract `issueCertificate`.
-7. Backend lưu metadata vào MongoDB.
-8. Backend tạo QR trỏ tới `/verify/{certId}`.
+## Chạy Thủ Công Không Dùng Docker
 
-### 5.2. Xác thực chứng chỉ
+Chỉ dùng khi cần debug từng service riêng.
 
-Người dùng xác thực bằng một trong ba cách:
+### Terminal 1: MongoDB
 
-- Nhập mã chứng chỉ.
-- Upload PDF gốc.
-- Quét QR.
+```bash
+brew services start mongodb-community
+mongosh --quiet --eval "db.adminCommand({ ping: 1 })" mongodb://127.0.0.1:27017/certchain
+```
 
-Backend sẽ:
+### Terminal 2: Hardhat
 
-1. Tìm chứng chỉ trong MongoDB.
-2. Đối chiếu trạng thái on-chain qua smart contract.
-3. Trả kết quả hợp lệ, đã thu hồi hoặc không tìm thấy.
+```bash
+cd smart-contract
+npx hardhat node
+```
 
-## 6. API Chính
+### Terminal 3: Deploy Contract
 
-Base URL:
+```bash
+cd smart-contract
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+Copy contract address vào:
+
+`backend/.env`:
+
+```env
+ALCHEMY_URL=http://127.0.0.1:8545
+CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+ADMIN_PRIVATE_KEY=local_hardhat_account_private_key
+```
+
+`frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+NEXT_PUBLIC_CHAIN_ID=31337
+NEXT_PUBLIC_RPC_URL=http://localhost:8545
+```
+
+### Terminal 4: Backend
+
+```bash
+cd backend
+npm ci
+npm run dev
+```
+
+Seed admin:
+
+```bash
+curl -X POST http://localhost:5001/api/auth/seed
+```
+
+### Terminal 5: Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+## API Chính
+
+Base URL dev:
 
 ```txt
 http://localhost:5001/api
@@ -423,6 +384,7 @@ Certificates admin, yêu cầu JWT:
 
 ```txt
 POST /certificates/issue
+POST /certificates/sync-from-chain
 GET  /certificates
 GET  /certificates/stats
 GET  /certificates/audit
@@ -431,7 +393,7 @@ GET  /certificates/:certId/qr
 PUT  /certificates/:certHash/revoke
 ```
 
-Verify public:
+Verify public API vẫn tồn tại để tương thích và lịch sử, nhưng giao diện xác thực chính đọc blockchain trực tiếp:
 
 ```txt
 POST /verify/by-id
@@ -447,7 +409,7 @@ GET /health
 GET /api/health
 ```
 
-## 7. Kiểm Tra Code
+## Kiểm Tra Code
 
 Smart contract:
 
@@ -470,16 +432,54 @@ Frontend:
 cd frontend
 npm run type-check
 npm run lint
+npm test
 npm run build
 ```
 
-Lưu ý: phải chạy các lệnh trong đúng thư mục con. Nếu chạy `npm` ở `/Users/tolinh` sẽ báo không tìm thấy `package.json`.
+Lưu ý: chạy lệnh trong đúng thư mục con. Nếu chạy `npm` ở `/Users/tolinh` sẽ báo không tìm thấy `package.json`.
 
-## 8. Lỗi Thường Gặp
+## Lệnh Docker Hay Dùng
 
-### 8.1. Docker chưa mở
+Chạy dev:
 
-Lỗi:
+```bash
+./scripts/dev-docker.sh
+```
+
+Xem trạng thái:
+
+```bash
+docker compose -f docker-compose.dev.yml ps
+```
+
+Xem log:
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f backend frontend hardhat mongodb
+```
+
+Restart frontend/backend sau khi sửa code:
+
+```bash
+docker compose -f docker-compose.dev.yml restart frontend backend
+```
+
+Rebuild sạch frontend/backend:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build --force-recreate frontend backend
+```
+
+Reset toàn bộ dev data:
+
+```bash
+docker compose -f docker-compose.dev.yml down -v
+./scripts/dev-docker.sh
+```
+
+## Lỗi Thường Gặp
+
+### Docker chưa chạy
 
 ```txt
 failed to connect to the docker API
@@ -487,45 +487,30 @@ failed to connect to the docker API
 
 Cách xử lý:
 
-- Mở Docker Desktop.
-- Đợi Docker status là `Running`.
-- Chạy lại:
+- Mở Docker Desktop hoặc Docker Engine.
+- Chờ Docker ready.
+- Chạy lại `./scripts/dev-docker.sh`.
 
-```bash
-./scripts/dev-docker.sh
-```
-
-### 8.2. MongoDB ECONNREFUSED khi chạy thủ công
-
-Lỗi:
+### MongoDB ECONNREFUSED
 
 ```txt
 MongoDB connection failed: connect ECONNREFUSED 127.0.0.1:27017
 ```
 
-Cách xử lý nhanh nhất: dùng Docker dev.
+Nếu chạy Docker dev, không cần MongoDB local. Chạy:
 
 ```bash
 ./scripts/dev-docker.sh
 ```
 
-Nếu vẫn muốn chạy thủ công:
+Nếu chạy thủ công, phải start MongoDB local trước.
 
-```bash
-brew services start mongodb-community
-mongosh --quiet --eval "db.adminCommand({ ping: 1 })" mongodb://127.0.0.1:27017/certchain
-```
-
-### 8.3. Hardhat RPC ECONNREFUSED
-
-Lỗi:
+### Hardhat RPC ECONNREFUSED
 
 ```txt
 JsonRpcProvider failed to detect network
 connect ECONNREFUSED 127.0.0.1:8545
 ```
-
-Nguyên nhân: chưa chạy Hardhat node hoặc Docker hardhat chưa lên.
 
 Docker:
 
@@ -541,62 +526,53 @@ cd smart-contract
 npx hardhat node
 ```
 
-### 8.4. QR mở trên điện thoại không kết nối được
+### QR mở trên điện thoại không kết nối được
 
-Nguyên nhân thường gặp: QR chứa `localhost`.
-
-Điện thoại hiểu `localhost` là chính điện thoại, không phải máy Mac.
+Nguyên nhân thường gặp: URL/RPC/API đang là `localhost`.
 
 Cách xử lý:
 
-1. Lấy IP máy Mac:
-
 ```bash
 ipconfig getifaddr en0
-```
-
-2. Chạy Docker bằng script để tự set IP:
-
-```bash
 ./scripts/dev-docker.sh
 ```
 
-3. Nếu chạy thủ công, sửa env theo IP LAN ở mục 4.
+Mở bằng URL được script in ra, ví dụ:
 
-### 8.5. File đã tồn tại
+```txt
+http://192.168.0.193:3000
+```
 
-Lỗi:
+### Chứng chỉ đã tồn tại
 
 ```txt
 A certificate with this file already exists
 ```
 
-Nguyên nhân: PDF đó đã từng được cấp, hash SHA-256 trùng.
+Nguyên nhân: PDF đó đã được cấp trước đó, hash SHA-256 trùng.
 
 Cách xử lý:
 
-- Upload PDF khác.
-- Hoặc reset database dev:
+- Dùng PDF khác.
+- Hoặc reset dev data:
 
 ```bash
 docker compose -f docker-compose.dev.yml down -v
 ./scripts/dev-docker.sh
 ```
 
-### 8.6. Hardhat local mất dữ liệu sau restart
+### Hardhat local mất dữ liệu sau restart
 
-Hardhat local blockchain là tạm thời. Nếu tắt Hardhat, dữ liệu on-chain mất.
+Hardhat local blockchain là môi trường tạm. Khi reset Hardhat, dữ liệu on-chain có thể mất hoặc lệch với MongoDB.
 
-Khi reset Hardhat, nên reset luôn MongoDB dev để dữ liệu không lệch:
+Nếu cần môi trường sạch:
 
 ```bash
 docker compose -f docker-compose.dev.yml down -v
 ./scripts/dev-docker.sh
 ```
 
-## 9. MetaMask Local Hardhat
-
-Nếu muốn dùng MetaMask với Hardhat local:
+## MetaMask Local Hardhat
 
 Network:
 
@@ -607,75 +583,58 @@ Chain ID: 31337
 Currency symbol: ETH
 ```
 
-Import Hardhat account #0 bằng private key:
+Import account dev bằng private key từ output `npx hardhat node` hoặc tài khoản local Hardhat. Chỉ dùng cho local development.
 
-```txt
-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+## Deploy Thật
+
+Khi deploy lên Sepolia hoặc production, cần đổi các biến sau:
+
+Frontend:
+
+```env
+NEXT_PUBLIC_CHAIN_ID=11155111
+NEXT_PUBLIC_CONTRACT_ADDRESS=your_deployed_contract_address
+NEXT_PUBLIC_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+NEXT_PUBLIC_ALCHEMY_KEY=your_key
+NEXT_PUBLIC_API_URL=https://your-backend-domain/api
 ```
 
-Chỉ dùng account này cho local dev.
+Backend:
 
-## 10. Kiến Trúc Tổng Quan
+```env
+MONGODB_URI=mongodb+srv://...
+ALCHEMY_URL=https://eth-sepolia.g.alchemy.com/v2/your_key
+CONTRACT_ADDRESS=your_deployed_contract_address
+ADMIN_PRIVATE_KEY=server_wallet_private_key
+FRONTEND_URL=https://your-frontend-domain
+CORS_ALLOWED_ORIGINS=https://your-frontend-domain
+BASE_URL=https://your-frontend-domain
+```
+
+Không commit các giá trị thật lên Git.
+
+## Kiến Trúc Tổng Quan
 
 ```txt
-Người dùng / Admin
-        |
-        v
+Public User
+   |
+   v
 Next.js Frontend
-        |
-        v
+   |
+   |-- Direct read: ethers.js → CertRegistry smart contract
+   |
+Admin User
+   |
+   v
+Next.js Admin UI
+   |
+   v
 Express Backend
    |        |        |
    v        v        v
-MongoDB   IPFS    Smart Contract
-                 CertRegistry.sol
+MongoDB   IPFS    CertRegistry smart contract
                       |
                       v
-              Hardhat / Ethereum
+              Hardhat local / Ethereum Sepolia
 ```
 
-## 11. Lệnh Hay Dùng
-
-Chạy Docker dev:
-
-```bash
-cd /Users/tolinh/Documents/Programming/blockchain/certchain
-./scripts/dev-docker.sh
-```
-
-Xem trạng thái Docker:
-
-```bash
-docker compose -f docker-compose.dev.yml ps
-```
-
-Xem log:
-
-```bash
-docker compose -f docker-compose.dev.yml logs -f backend frontend hardhat mongodb
-```
-
-Dừng Docker:
-
-```bash
-docker compose -f docker-compose.dev.yml down
-```
-
-Reset Docker dev:
-
-```bash
-docker compose -f docker-compose.dev.yml down -v
-./scripts/dev-docker.sh
-```
-
-Seed admin:
-
-```bash
-curl -X POST http://localhost:5001/api/auth/seed
-```
-
-Health check:
-
-```bash
-curl -s http://localhost:5001/health
-```

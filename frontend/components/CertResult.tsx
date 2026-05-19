@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import type { VerifyResponse } from "@/types";
 import { copyToClipboard, formatDate, formatDateRelative, truncateHash } from "@/lib/utils";
 import { localeForLanguage } from "@/lib/i18n";
+import { CHAIN_ID, CONTRACT_ADDRESS, SUPPORTED_CHAINS } from "@/lib/constants";
 import { useLanguage } from "@/context/LanguageContext";
 
 const PDFViewerModal = dynamic(() => import("@/components/PDFViewerModal"), { ssr: false });
@@ -34,6 +35,7 @@ interface CertResultProps {
   result?: VerifyResponse | null;
   queriedId?: string;
   verificationStep?: number;
+  currentStep?: string;
   error?: string | null;
   onReset?: () => void;
 }
@@ -66,6 +68,7 @@ export default function CertResult({
   result = null,
   queriedId,
   verificationStep = -1,
+  currentStep,
   error,
   onReset,
 }: CertResultProps) {
@@ -80,6 +83,10 @@ export default function CertResult({
   const certHash = cert?.certHash || result?.blockchain?.certHash || "N/A";
   const ipfsUrl = getIpfsUrl(result);
   const verificationTime = result?.verifiedAt || cert?.lastVerifiedAt || new Date().toISOString();
+  const directBlockchain = result?.source === "blockchain";
+  const chainName = SUPPORTED_CHAINS[CHAIN_ID]?.name || "Ethereum Sepolia";
+  const explorer = SUPPORTED_CHAINS[CHAIN_ID]?.explorer || "https://sepolia.etherscan.io";
+  const contractExplorerUrl = explorer && CONTRACT_ADDRESS ? `${explorer}/address/${CONTRACT_ADDRESS}` : "";
 
   const verificationLink = useMemo(() => {
     if (typeof window === "undefined" || !certId || certId === "N/A") return "";
@@ -173,7 +180,12 @@ export default function CertResult({
       >
         <div className="mb-5 flex items-center gap-3 text-[var(--text-primary)]">
           <Loader2 size={20} className="animate-spin text-[var(--teal)]" />
-          <h3 className="text-lg font-bold">{t("result.loadingTitle")}</h3>
+          <div>
+            <h3 className="text-lg font-bold">{t("result.loadingTitle")}</h3>
+            {currentStep ? (
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">{currentStep}</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -396,6 +408,28 @@ export default function CertResult({
             {t("result.block", { block: typeof cert?.blockNumber === "number" ? cert.blockNumber.toLocaleString(locale) : t("common.na") })}
           </span>
         </div>
+
+        {directBlockchain ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--teal-border)] bg-[var(--teal-glow)] px-3.5 py-1.5 text-xs text-[var(--teal)]"
+              style={{ fontFamily: "var(--font-dm)" }}
+            >
+              ⛓ Verified directly on {chainName} blockchain
+            </div>
+            {contractExplorerUrl ? (
+              <a
+                href={contractExplorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-[var(--teal)]"
+              >
+                View contract on Etherscan
+                <ExternalLink size={12} />
+              </a>
+            ) : null}
+          </div>
+        ) : null}
 
         <ResultActions onReset={onReset} />
       </motion.section>

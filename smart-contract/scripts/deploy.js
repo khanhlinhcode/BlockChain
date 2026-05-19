@@ -17,22 +17,45 @@ async function main() {
   console.log("Deployer balance: ", hre.ethers.formatEther(balance), "ETH\n");
 
   // ── Deploy ──
-  console.log("Deploying CertRegistry...");
   const CertRegistry = await hre.ethers.getContractFactory("CertRegistry");
-  const certRegistry = await CertRegistry.deploy();
-  await certRegistry.waitForDeployment();
+  const localChains = [31337n, 1337n];
+  const isLocalNetwork = localChains.includes(network.chainId);
+  const expectedLocalAddress =
+    process.env.CONTRACT_ADDRESS ||
+    hre.ethers.getCreateAddress({ from: deployer.address, nonce: 0 });
 
-  const contractAddress = await certRegistry.getAddress();
-  const deployTx = certRegistry.deploymentTransaction();
+  let certRegistry;
+  let contractAddress;
+  let deployTx = null;
+  let reusedDeployment = false;
 
-  console.log("✅ CertRegistry deployed!");
+  if (isLocalNetwork) {
+    const existingCode = await hre.ethers.provider.getCode(expectedLocalAddress);
+    if (existingCode && existingCode !== "0x") {
+      console.log(`Reusing existing local CertRegistry at ${expectedLocalAddress}`);
+      certRegistry = CertRegistry.attach(expectedLocalAddress);
+      contractAddress = expectedLocalAddress;
+      reusedDeployment = true;
+    }
+  }
+
+  if (!certRegistry) {
+    console.log("Deploying CertRegistry...");
+    certRegistry = await CertRegistry.deploy();
+    await certRegistry.waitForDeployment();
+
+    contractAddress = await certRegistry.getAddress();
+    deployTx = certRegistry.deploymentTransaction();
+  }
+
+  console.log(reusedDeployment ? "✅ CertRegistry already deployed!" : "✅ CertRegistry deployed!");
   console.log("   Contract address:", contractAddress);
   console.log("   Transaction hash:", deployTx?.hash || "N/A");
   console.log("   Block number:    ", deployTx?.blockNumber || "pending...\n");
 
   // ── Optional initial admin bootstrap ──
   const initialAdmin = process.env.INITIAL_ADMIN_ADDRESS;
-  if (initialAdmin) {
+  if (initialAdmin && !reusedDeployment) {
     if (!hre.ethers.isAddress(initialAdmin)) {
       throw new Error(`INITIAL_ADMIN_ADDRESS is not a valid address: ${initialAdmin}`);
     }
@@ -49,7 +72,7 @@ async function main() {
 
   // ── Optional ownership transfer ──
   const transferOwnershipTo = process.env.TRANSFER_OWNERSHIP_TO;
-  if (transferOwnershipTo) {
+  if (transferOwnershipTo && !reusedDeployment) {
     if (!hre.ethers.isAddress(transferOwnershipTo)) {
       throw new Error(`TRANSFER_OWNERSHIP_TO is not a valid address: ${transferOwnershipTo}`);
     }
@@ -102,7 +125,6 @@ async function main() {
   console.log(`📄 Deployment info saved to: ${deploymentsPath}`);
 
   // ── Verify on Etherscan/Polygonscan (skip for local) ──
-  const localChains = [31337n, 1337n];
   if (!localChains.includes(network.chainId)) {
     console.log("\n⏳ Waiting 30s for block confirmations before verification...");
     await new Promise((resolve) => setTimeout(resolve, 30000));

@@ -7,13 +7,25 @@ const qrService = require("../services/qrService");
 const BASE_URL = () => process.env.FRONTEND_URL || "http://localhost:3000";
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const CERT_ID_PATTERN = /^[A-Z0-9][A-Z0-9._:-]{2,79}$/;
+const ALLOWED_SORT_FIELDS = new Set(["issuedAt", "certId", "recipientName", "courseName", "createdAt"]);
+const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 function normalizeText(value) {
-  return String(value || "").trim();
+  return String(value || "")
+    .replace(/[<>]/g, "")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
 }
 
 function normalizeCertId(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function ipfsGatewayUrl(cid) {
+  const gateway = (process.env.PINATA_GATEWAY || process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs")
+    .replace(/\/+$/, "");
+  return `${gateway}/${cid}`;
 }
 
 /**
@@ -80,15 +92,30 @@ exports.issue = async (req, res, next) => {
       cid = uploaded.cid;
       ipfsUrl = uploaded.url;
     } catch (error) {
-      error.status = 502;
-      error.message = `IPFS upload failed: ${error.message}`;
+      error.status = 503;
+      error.message = `IPFS service temporarily unavailable: ${error.message}`;
       throw error;
     }
 
     // 5. Issue on blockchain
-    const { txHash, blockNumber } = await blockchainService.issueCertOnChain(
-      certHash, certId, cid, recipientName, courseName, issuingOrg
-    );
+    let txHash;
+    let blockNumber;
+    try {
+      const tx = await blockchainService.issueCertOnChain(
+        certHash,
+        certId,
+        cid,
+        recipientName,
+        courseName,
+        issuingOrg
+      );
+      txHash = tx.txHash;
+      blockNumber = tx.blockNumber;
+    } catch (error) {
+      error.status = 503;
+      error.message = `Blockchain service temporarily unavailable: ${error.message}`;
+      throw error;
+    }
 
     // 6. Generate QR code
     const qrDataUrl = await qrService.generateQRCode(certId, BASE_URL());
@@ -146,7 +173,15 @@ exports.revoke = async (req, res, next) => {
     }
 
     // Revoke on-chain
-    const { txHash } = await blockchainService.revokeCertOnChain(certHash, reason || "Revoked by admin");
+    let txHash;
+    try {
+      const tx = await blockchainService.revokeCertOnChain(certHash, reason || "Revoked by admin");
+      txHash = tx.txHash;
+    } catch (error) {
+      error.status = 503;
+      error.message = `Blockchain service temporarily unavailable: ${error.message}`;
+      throw error;
+    }
 
     // Update DB
     cert.isRevoked = true;
@@ -195,7 +230,7 @@ exports.list = async (req, res, next) => {
     }
 
     // Sort
-    const sortField = sort || "issuedAt";
+    const sortField = ALLOWED_SORT_FIELDS.has(String(sort || "")) ? String(sort) : "issuedAt";
     const sortOrder = req.query.order === "asc" ? 1 : -1;
 
     const [certificates, total] = await Promise.all([
@@ -205,10 +240,12 @@ exports.list = async (req, res, next) => {
 
     return res.json({
       success: true,
+      data: certificates,
       certificates,
       total,
       page,
       totalPages: Math.ceil(total / limit),
+      limit,
     });
   } catch (err) {
     next(err);
@@ -286,46 +323,263 @@ exports.stats = async (_req, res, next) => {
 exports.audit = async (req, res, next) => {
   try {
     const { eventType = "all", from, to, limit } = req.query;
+    const maxLimit = Math.min(500, Math.max(1, parseInt(limit, 10) || 200));
     const events = await blockchainService.getAuditEvents({
       eventType,
       from,
       to,
-      limit,
+      limit: maxLimit,
     });
 
     const missingIds = events
       .filter((event) => !event.certId && event.certHash)
       .map((event) => event.certHash);
 
-    if (!missingIds.length) {
-      return res.json({ success: true, events });
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+    if (toDate && !Number.isNaN(toDate.getTime())) {
+      toDate.setHours(23, 59, 59, 999);
     }
 
-    const certificateRows = await Certificate.find({
-      certHash: { $in: Array.from(new Set(missingIds)) },
-    })
-      .select("certHash certId")
-      .lean();
+    const certificateFilter = {};
+    if (eventType !== "all" && eventType !== "issued") {
+      certificateFilter._id = { $exists: false };
+    }
+    if (fromDate && !Number.isNaN(fromDate.getTime())) {
+      certificateFilter.issuedAt = { ...(certificateFilter.issuedAt || {}), $gte: fromDate };
+    }
+    if (toDate && !Number.isNaN(toDate.getTime())) {
+      certificateFilter.issuedAt = { ...(certificateFilter.issuedAt || {}), $lte: toDate };
+    }
 
-    const certIdByHash = new Map(
-      certificateRows.map((row) => [row.certHash, row.certId || ""])
-    );
+    const [missingRows, issuedRows] = await Promise.all([
+      missingIds.length
+        ? Certificate.find({ certHash: { $in: Array.from(new Set(missingIds)) } })
+            .select("certHash certId")
+            .lean()
+        : [],
+      Certificate.find(certificateFilter)
+        .select("certHash certId issuerAddress issuedAt txHash blockNumber")
+        .sort({ issuedAt: -1 })
+        .limit(maxLimit)
+        .lean(),
+    ]);
 
-    const merged = events.map((event) => ({
+    const certIdByHash = new Map(missingRows.map((row) => [row.certHash, row.certId || ""]));
+    const normalizedChainEvents = events.map((event) => ({
       ...event,
       certId: event.certId || certIdByHash.get(event.certHash) || "Unknown",
     }));
+
+    const chainEventKeys = new Set(
+      normalizedChainEvents.map((event) => `${event.eventType}:${event.txHash || event.certHash}`)
+    );
+
+    const mongoIssuedEvents = issuedRows
+      .map((row) => ({
+        eventType: "issued",
+        certId: row.certId || "Unknown",
+        certHash: row.certHash || "",
+        actor: row.issuerAddress || "",
+        timestamp: row.issuedAt ? new Date(row.issuedAt).toISOString() : new Date(0).toISOString(),
+        txHash: row.txHash || "",
+        blockNumber: Number(row.blockNumber || 0),
+        source: "database",
+      }))
+      .filter((event) => !chainEventKeys.has(`${event.eventType}:${event.txHash || event.certHash}`));
+
+    const merged = [...normalizedChainEvents, ...mongoIssuedEvents]
+      .sort((a, b) => {
+        const byTime = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        if (byTime !== 0) return byTime;
+        return Number(b.blockNumber || 0) - Number(a.blockNumber || 0);
+      })
+      .slice(0, maxLimit);
 
     return res.json({ success: true, events: merged });
   } catch (err) {
     if (blockchainService.isRpcUnavailableError?.(err)) {
       blockchainService.resetDefaultClient?.();
-      return res.json({
-        success: true,
-        events: [],
-        warning:
-          "Blockchain RPC is unavailable. Start the local Hardhat node or update ALCHEMY_URL to view on-chain audit events.",
+      try {
+        const maxLimit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 200));
+        const fallbackRows = await Certificate.find({})
+          .select("certHash certId issuerAddress issuedAt txHash blockNumber")
+          .sort({ issuedAt: -1 })
+          .limit(maxLimit)
+          .lean();
+        return res.json({
+          success: true,
+          events: fallbackRows.map((row) => ({
+            eventType: "issued",
+            certId: row.certId || "Unknown",
+            certHash: row.certHash || "",
+            actor: row.issuerAddress || "",
+            timestamp: row.issuedAt ? new Date(row.issuedAt).toISOString() : new Date(0).toISOString(),
+            txHash: row.txHash || "",
+            blockNumber: Number(row.blockNumber || 0),
+            source: "database",
+          })),
+          warning:
+            "Blockchain RPC is unavailable. Showing database-backed certificate issue history.",
+        });
+      } catch {
+        return res.json({
+          success: true,
+          events: [],
+          warning:
+            "Blockchain RPC is unavailable. Start the local Hardhat node or update ALCHEMY_URL to view on-chain audit events.",
+        });
+      }
+    }
+    next(err);
+  }
+};
+
+/**
+ * POST /api/certificates/sync-from-chain
+ * Persist a certificate that was issued directly on-chain, for example through
+ * a browser wallet, so MongoDB-backed list/search pages stay consistent.
+ */
+exports.syncFromChain = async (req, res, next) => {
+  try {
+    const txHash = String(req.body.txHash || "").trim();
+    if (!TX_HASH_PATTERN.test(txHash)) {
+      return res.status(400).json({
+        success: false,
+        error: "Valid txHash is required",
       });
+    }
+
+    const provider = await blockchainService.getProvider();
+    const receipt = await provider.getTransactionReceipt(txHash);
+
+    if (!receipt) {
+      return res.status(404).json({
+        success: false,
+        error: "Transaction not found or not confirmed yet",
+      });
+    }
+
+    if (receipt.status !== 1) {
+      return res.status(400).json({
+        success: false,
+        error: "Transaction failed on blockchain",
+      });
+    }
+
+    const contract = await blockchainService.getContract();
+    const contractAddress =
+      typeof contract.getAddress === "function"
+        ? await contract.getAddress()
+        : String(contract.target || process.env.CONTRACT_ADDRESS || "");
+
+    let issuedEvent = null;
+    for (const log of receipt.logs || []) {
+      if (
+        contractAddress &&
+        log.address &&
+        String(log.address).toLowerCase() !== String(contractAddress).toLowerCase()
+      ) {
+        continue;
+      }
+
+      try {
+        const parsed = contract.interface.parseLog(log);
+        if (parsed?.name === "CertIssued") {
+          issuedEvent = parsed.args;
+          break;
+        }
+      } catch {
+        // Ignore logs from other contracts in the same transaction.
+      }
+    }
+
+    if (!issuedEvent) {
+      return res.status(400).json({
+        success: false,
+        error: "No CertIssued event found in transaction",
+      });
+    }
+
+    const certHash = blockchainService.normalizeHash(String(issuedEvent.certHash));
+    const eventCertId = normalizeCertId(issuedEvent.certId);
+
+    const existing = await Certificate.findOne({
+      $or: [{ certHash }, ...(eventCertId ? [{ certId: eventCertId }] : [])],
+    });
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        message: "Certificate already synced",
+        certificate: existing,
+      });
+    }
+
+    const onChainCert = await blockchainService.getCertOnChain(certHash);
+    const certId = normalizeCertId(onChainCert.certId || eventCertId);
+    const ipfsCID = normalizeText(onChainCert.ipfsCID);
+
+    if (!certId) {
+      return res.status(400).json({
+        success: false,
+        error: "On-chain certificate is missing certId",
+      });
+    }
+    if (!ipfsCID) {
+      return res.status(400).json({
+        success: false,
+        error: "On-chain certificate is missing IPFS CID",
+      });
+    }
+
+    const issuedAtSeconds = Number(onChainCert.issuedAt);
+    const revokedAtSeconds = Number(onChainCert.revokedAt || 0);
+    const isRevoked = Boolean(onChainCert.isRevoked);
+
+    try {
+      await qrService.generateQRCode(certId, BASE_URL());
+    } catch {
+      // QR files can be regenerated by GET /api/certificates/:certId/qr.
+    }
+
+    const certificate = await Certificate.create({
+      certHash,
+      certId,
+      ipfsCID,
+      ipfsUrl: ipfsGatewayUrl(ipfsCID),
+      recipientName: normalizeText(onChainCert.recipientName),
+      courseName: normalizeText(onChainCert.courseName),
+      issuingOrg: normalizeText(onChainCert.issuingOrg),
+      issuerAddress: String(onChainCert.issuer || issuedEvent.issuer || ""),
+      issuedAt:
+        Number.isFinite(issuedAtSeconds) && issuedAtSeconds > 0
+          ? new Date(issuedAtSeconds * 1000)
+          : new Date(),
+      isRevoked,
+      revokedAt:
+        isRevoked && Number.isFinite(revokedAtSeconds) && revokedAtSeconds > 0
+          ? new Date(revokedAtSeconds * 1000)
+          : null,
+      revokedBy:
+        isRevoked && onChainCert.revokedBy && String(onChainCert.revokedBy).toLowerCase() !== ZERO_ADDRESS
+          ? String(onChainCert.revokedBy)
+          : null,
+      txHash,
+      blockNumber: Number(receipt.blockNumber),
+      qrCodeUrl: `/api/certificates/${certId}/qr`,
+      verificationCount: 0,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Certificate synced from blockchain",
+      certificate,
+    });
+  } catch (err) {
+    if (blockchainService.isRpcUnavailableError?.(err)) {
+      blockchainService.resetDefaultClient?.();
+      err.status = 503;
+      err.message = `Blockchain service temporarily unavailable: ${err.message}`;
     }
     next(err);
   }
