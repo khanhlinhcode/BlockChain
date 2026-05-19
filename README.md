@@ -1,13 +1,12 @@
 # CertChain
 
 CertChain là hệ thống cấp, quản trị và xác thực chứng chỉ bằng blockchain. Dữ liệu xác thực cuối cùng nằm trên smart contract, còn MongoDB dùng để phục vụ dashboard, tìm kiếm, QR và nghiệp vụ quản trị.
-![alt text](image.png)
-![alt text](image)
-![alt text](image)
-![alt text](image)
-![alt text](image)
-![alt text](image)
-![alt text](image)
+![alt text](image-5.png)
+![alt text](image-2.png)
+![alt text](image-1.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
+![alt text](image-6.png)
 
 ## Thành Phần Chính
 
