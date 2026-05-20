@@ -4,12 +4,63 @@ const ipfsService = require("../services/ipfsService");
 const blockchainService = require("../services/blockchainService");
 const qrService = require("../services/qrService");
 
-const BASE_URL = () => process.env.FRONTEND_URL || "http://localhost:3000";
+function trimUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isLocalUrl(value) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname);
+  } catch {
+    return true;
+  }
+}
+
+function requestOrigin(req) {
+  return trimUrl(req?.headers?.origin || "");
+}
+
+function frontendBaseUrl(req) {
+  const configuredUrls = [
+    process.env.PUBLIC_FRONTEND_URL,
+    process.env.NEXT_PUBLIC_FRONTEND_URL,
+    process.env.FRONTEND_URL,
+    process.env.BASE_URL,
+  ]
+    .map(trimUrl)
+    .filter(Boolean);
+  const origin = requestOrigin(req);
+
+  return (
+    configuredUrls.find((url) => !isLocalUrl(url)) ||
+    (origin && !isLocalUrl(origin) ? origin : "") ||
+    configuredUrls[0] ||
+    origin ||
+    "http://localhost:3000"
+  );
+}
+
+function verifyUrlFor(certId, req) {
+  return qrService.buildVerifyUrl(certId, frontendBaseUrl(req));
+}
+
+function certificatePayload(cert, req) {
+  const payload = typeof cert?.toObject === "function" ? cert.toObject() : { ...(cert || {}) };
+  if (payload.certId) {
+    payload.qrVerifyUrl = verifyUrlFor(payload.certId, req);
+    payload.verifyUrl = payload.qrVerifyUrl;
+  }
+  return payload;
+}
+
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const CERT_ID_PATTERN = /^[A-Z0-9][A-Z0-9._:-]{2,79}$/;
 const ALLOWED_SORT_FIELDS = new Set(["issuedAt", "certId", "recipientName", "courseName", "createdAt"]);
 const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const auditCache = new Map();
+const AUDIT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function normalizeText(value) {
   return String(value || "")
@@ -26,6 +77,32 @@ function ipfsGatewayUrl(cid) {
   const gateway = (process.env.PINATA_GATEWAY || process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs")
     .replace(/\/+$/, "");
   return `${gateway}/${cid}`;
+}
+
+function auditCacheKey({ eventType, from, to, limit }) {
+  return JSON.stringify({
+    eventType: eventType || "all",
+    from: from || "",
+    to: to || "",
+    limit: Number(limit || 200),
+  });
+}
+
+function getCachedAuditEvents(key) {
+  const cached = auditCache.get(key);
+  if (!cached) return [];
+  if (Date.now() - cached.createdAt > AUDIT_CACHE_TTL_MS) {
+    auditCache.delete(key);
+    return [];
+  }
+  return cached.events || [];
+}
+
+function setCachedAuditEvents(key, events) {
+  auditCache.set(key, {
+    createdAt: Date.now(),
+    events,
+  });
 }
 
 /**
@@ -84,6 +161,16 @@ exports.issue = async (req, res, next) => {
         .json({ success: false, error: "A certificate with this ID already exists" });
     }
 
+    // 4. Validate backend wallet permission before doing paid/slow work.
+    try {
+      await blockchainService.assertSignerIsAdmin();
+    } catch (error) {
+      return res.status(403).json({
+        success: false,
+        error: error.message,
+      });
+    }
+
     // 4. Upload to IPFS
     let cid;
     let ipfsUrl;
@@ -112,13 +199,18 @@ exports.issue = async (req, res, next) => {
       txHash = tx.txHash;
       blockNumber = tx.blockNumber;
     } catch (error) {
-      error.status = 503;
-      error.message = `Blockchain service temporarily unavailable: ${error.message}`;
+      const notAuthorized =
+        /not authorized|not an on-chain admin/i.test(error.message || "") ||
+        error.reason === "Not authorized";
+      error.status = notAuthorized ? 403 : 503;
+      error.message = notAuthorized
+        ? `Backend wallet is not authorized to issue certificates on this contract. Set ADMIN_PRIVATE_KEY to a Sepolia admin wallet or add the backend wallet as an admin.`
+        : `Blockchain service temporarily unavailable: ${error.message}`;
       throw error;
     }
 
     // 6. Generate QR code
-    const qrDataUrl = await qrService.generateQRCode(certId, BASE_URL());
+    const qrResult = await qrService.generateQRCode(certId, frontendBaseUrl(req));
 
     // 7. Save to MongoDB
     const certificate = await Certificate.create({
@@ -134,7 +226,10 @@ exports.issue = async (req, res, next) => {
       txHash,
       blockNumber,
       qrCodeUrl: `/api/certificates/${certId}/qr`,
+      qrVerifyUrl: qrResult.verifyUrl,
     });
+
+    const payload = certificatePayload(certificate, req);
 
     return res.status(201).json({
       success: true,
@@ -144,8 +239,10 @@ exports.issue = async (req, res, next) => {
       ipfsUrl,
       txHash,
       blockNumber,
-      qrCode: qrDataUrl,
-      certificate,
+      verifyUrl: payload.verifyUrl,
+      qrVerifyUrl: payload.qrVerifyUrl,
+      qrCode: qrResult.base64,
+      certificate: payload,
     });
   } catch (err) {
     next(err);
@@ -174,9 +271,11 @@ exports.revoke = async (req, res, next) => {
 
     // Revoke on-chain
     let txHash;
+    let blockNumber;
     try {
       const tx = await blockchainService.revokeCertOnChain(certHash, reason || "Revoked by admin");
       txHash = tx.txHash;
+      blockNumber = tx.blockNumber;
     } catch (error) {
       error.status = 503;
       error.message = `Blockchain service temporarily unavailable: ${error.message}`;
@@ -188,6 +287,8 @@ exports.revoke = async (req, res, next) => {
     cert.revokedAt = new Date();
     cert.revokedBy = req.admin.walletAddress || req.admin.username;
     cert.revokeReason = reason || "No reason provided";
+    cert.revokeTxHash = txHash;
+    cert.revokeBlockNumber = blockNumber;
     try {
       await cert.save();
     } catch (error) {
@@ -197,7 +298,7 @@ exports.revoke = async (req, res, next) => {
       throw error;
     }
 
-    return res.json({ success: true, txHash, certificate: cert });
+    return res.json({ success: true, txHash, certificate: certificatePayload(cert, req) });
   } catch (err) {
     next(err);
   }
@@ -238,10 +339,12 @@ exports.list = async (req, res, next) => {
       Certificate.countDocuments(filter),
     ]);
 
+    const rows = certificates.map((cert) => certificatePayload(cert, req));
+
     return res.json({
       success: true,
-      data: certificates,
-      certificates,
+      data: rows,
+      certificates: rows,
       total,
       page,
       totalPages: Math.ceil(total / limit),
@@ -324,56 +427,43 @@ exports.audit = async (req, res, next) => {
   try {
     const { eventType = "all", from, to, limit } = req.query;
     const maxLimit = Math.min(500, Math.max(1, parseInt(limit, 10) || 200));
-    const events = await blockchainService.getAuditEvents({
-      eventType,
-      from,
-      to,
-      limit: maxLimit,
-    });
-
-    const missingIds = events
-      .filter((event) => !event.certId && event.certHash)
-      .map((event) => event.certHash);
-
+    const cacheKey = auditCacheKey({ eventType, from, to, limit: maxLimit });
     const fromDate = from ? new Date(from) : null;
     const toDate = to ? new Date(to) : null;
     if (toDate && !Number.isNaN(toDate.getTime())) {
       toDate.setHours(23, 59, 59, 999);
     }
 
-    const certificateFilter = {};
-    if (eventType !== "all" && eventType !== "issued") {
-      certificateFilter._id = { $exists: false };
-    }
+    const issuedFilter = {};
+    const revokedFilter = { isRevoked: true, revokedAt: { $ne: null } };
     if (fromDate && !Number.isNaN(fromDate.getTime())) {
-      certificateFilter.issuedAt = { ...(certificateFilter.issuedAt || {}), $gte: fromDate };
+      issuedFilter.issuedAt = { ...(issuedFilter.issuedAt || {}), $gte: fromDate };
+      revokedFilter.revokedAt = { ...(revokedFilter.revokedAt || {}), $gte: fromDate };
     }
     if (toDate && !Number.isNaN(toDate.getTime())) {
-      certificateFilter.issuedAt = { ...(certificateFilter.issuedAt || {}), $lte: toDate };
+      issuedFilter.issuedAt = { ...(issuedFilter.issuedAt || {}), $lte: toDate };
+      revokedFilter.revokedAt = { ...(revokedFilter.revokedAt || {}), $lte: toDate };
     }
 
-    const [missingRows, issuedRows] = await Promise.all([
-      missingIds.length
-        ? Certificate.find({ certHash: { $in: Array.from(new Set(missingIds)) } })
-            .select("certHash certId")
+    const includeIssuedDb = eventType === "all" || eventType === "issued";
+    const includeRevokedDb = eventType === "all" || eventType === "revoked";
+
+    const [issuedRows, revokedRows] = await Promise.all([
+      includeIssuedDb
+        ? Certificate.find(issuedFilter)
+            .select("certHash certId issuerAddress issuedAt txHash blockNumber")
+            .sort({ issuedAt: -1 })
+            .limit(maxLimit)
             .lean()
         : [],
-      Certificate.find(certificateFilter)
-        .select("certHash certId issuerAddress issuedAt txHash blockNumber")
-        .sort({ issuedAt: -1 })
-        .limit(maxLimit)
-        .lean(),
+      includeRevokedDb
+        ? Certificate.find(revokedFilter)
+            .select("certHash certId revokedBy revokedAt revokeTxHash revokeBlockNumber")
+            .sort({ revokedAt: -1 })
+            .limit(maxLimit)
+            .lean()
+        : [],
     ]);
-
-    const certIdByHash = new Map(missingRows.map((row) => [row.certHash, row.certId || ""]));
-    const normalizedChainEvents = events.map((event) => ({
-      ...event,
-      certId: event.certId || certIdByHash.get(event.certHash) || "Unknown",
-    }));
-
-    const chainEventKeys = new Set(
-      normalizedChainEvents.map((event) => `${event.eventType}:${event.txHash || event.certHash}`)
-    );
 
     const mongoIssuedEvents = issuedRows
       .map((row) => ({
@@ -386,9 +476,79 @@ exports.audit = async (req, res, next) => {
         blockNumber: Number(row.blockNumber || 0),
         source: "database",
       }))
-      .filter((event) => !chainEventKeys.has(`${event.eventType}:${event.txHash || event.certHash}`));
+      .filter(Boolean);
 
-    const merged = [...normalizedChainEvents, ...mongoIssuedEvents]
+    const mongoRevokedEvents = revokedRows
+      .map((row) => ({
+        eventType: "revoked",
+        certId: row.certId || "Unknown",
+        certHash: row.certHash || "",
+        actor: row.revokedBy || "",
+        timestamp: row.revokedAt ? new Date(row.revokedAt).toISOString() : new Date(0).toISOString(),
+        txHash: row.revokeTxHash || "",
+        blockNumber: Number(row.revokeBlockNumber || 0),
+        source: "database",
+      }))
+      .filter(Boolean);
+
+    let chainWarning = "";
+    let normalizedChainEvents = [];
+    const shouldQueryChainEvents =
+      String(req.query.includeChain || process.env.AUDIT_ENABLE_CHAIN_EVENTS || "false").toLowerCase() === "true";
+
+    if (shouldQueryChainEvents) {
+      try {
+        const events = await blockchainService.getAuditEvents({
+          eventType,
+          from,
+          to,
+          limit: maxLimit,
+        });
+
+        const missingIds = events
+          .filter((event) => !event.certId && event.certHash)
+          .map((event) => event.certHash);
+
+        const missingRows = missingIds.length
+          ? await Certificate.find({ certHash: { $in: Array.from(new Set(missingIds)) } })
+              .select("certHash certId")
+              .lean()
+          : [];
+
+        const certIdByHash = new Map(missingRows.map((row) => [row.certHash, row.certId || ""]));
+        normalizedChainEvents = events.map((event) => ({
+          ...event,
+          certId: event.certId || certIdByHash.get(event.certHash) || "Unknown",
+          source: "blockchain",
+        }));
+      } catch (error) {
+        if (blockchainService.isRpcUnavailableError?.(error)) {
+          blockchainService.resetDefaultClient?.();
+        }
+        const cachedEvents = getCachedAuditEvents(cacheKey);
+        normalizedChainEvents = cachedEvents.filter((event) => event.source !== "database");
+        chainWarning = cachedEvents.length
+          ? "Blockchain RPC is temporarily unavailable. Showing cached audit events and database-backed issue history."
+          : "Blockchain RPC is temporarily unavailable. Showing database-backed issue history.";
+      }
+    }
+
+    const chainEventKeys = new Set(
+      normalizedChainEvents.map((event) => `${event.eventType}:${event.txHash || event.certHash}`)
+    );
+
+    const merged = [...normalizedChainEvents, ...mongoIssuedEvents, ...mongoRevokedEvents]
+      .filter((event, index, arr) => {
+        const key = `${event.eventType}:${event.txHash || event.certHash || event.certId}:${event.blockNumber || 0}`;
+        return arr.findIndex((candidate) => {
+          const candidateKey = `${candidate.eventType}:${candidate.txHash || candidate.certHash || candidate.certId}:${candidate.blockNumber || 0}`;
+          return candidateKey === key;
+        }) === index;
+      })
+      .filter((event) => {
+        if (event.source !== "database") return true;
+        return !chainEventKeys.has(`${event.eventType}:${event.txHash || event.certHash}`);
+      })
       .sort((a, b) => {
         const byTime = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
         if (byTime !== 0) return byTime;
@@ -396,7 +556,13 @@ exports.audit = async (req, res, next) => {
       })
       .slice(0, maxLimit);
 
-    return res.json({ success: true, events: merged });
+    setCachedAuditEvents(cacheKey, merged);
+
+    return res.json({
+      success: true,
+      events: merged,
+      ...(chainWarning ? { warning: chainWarning } : {}),
+    });
   } catch (err) {
     if (blockchainService.isRpcUnavailableError?.(err)) {
       blockchainService.resetDefaultClient?.();
@@ -511,7 +677,7 @@ exports.syncFromChain = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         message: "Certificate already synced",
-        certificate: existing,
+        certificate: certificatePayload(existing, req),
       });
     }
 
@@ -537,7 +703,7 @@ exports.syncFromChain = async (req, res, next) => {
     const isRevoked = Boolean(onChainCert.isRevoked);
 
     try {
-      await qrService.generateQRCode(certId, BASE_URL());
+      var qrResult = await qrService.generateQRCode(certId, frontendBaseUrl(req));
     } catch {
       // QR files can be regenerated by GET /api/certificates/:certId/qr.
     }
@@ -566,14 +732,17 @@ exports.syncFromChain = async (req, res, next) => {
           : null,
       txHash,
       blockNumber: Number(receipt.blockNumber),
+      revokeTxHash: isRevoked ? txHash : null,
+      revokeBlockNumber: isRevoked ? Number(receipt.blockNumber) : null,
       qrCodeUrl: `/api/certificates/${certId}/qr`,
+      qrVerifyUrl: qrResult?.verifyUrl || verifyUrlFor(certId, req),
       verificationCount: 0,
     });
 
     return res.status(201).json({
       success: true,
       message: "Certificate synced from blockchain",
-      certificate,
+      certificate: certificatePayload(certificate, req),
     });
   } catch (err) {
     if (blockchainService.isRpcUnavailableError?.(err)) {
@@ -592,7 +761,7 @@ exports.getById = async (req, res, next) => {
   try {
     const cert = await Certificate.findOne({ certId: req.params.certId });
     if (!cert) return res.status(404).json({ success: false, error: "Certificate not found" });
-    return res.json({ success: true, certificate: cert });
+    return res.json({ success: true, certificate: certificatePayload(cert, req) });
   } catch (err) {
     next(err);
   }
@@ -605,14 +774,23 @@ exports.getById = async (req, res, next) => {
 exports.getQR = async (req, res, next) => {
   try {
     const certId = normalizeCertId(req.params.certId);
-    const verifyUrl = `${BASE_URL()}/verify/${encodeURIComponent(certId)}`;
-    const dataUrl = await qrService.generateQRCode(certId, BASE_URL());
-    const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+    const cert = await Certificate.findOne({ certId });
+    if (!cert) return res.status(404).json({ success: false, error: "Certificate not found" });
+
+    const verifyUrl = verifyUrlFor(certId, req);
+    const qrResult = await qrService.generateQRCode(certId, verifyUrl.replace(/\/verify\/.+$/, ""));
+    const base64 = qrResult.base64.replace(/^data:image\/png;base64,/, "");
     const buffer = Buffer.from(base64, "base64");
 
+    if (!cert.qrVerifyUrl || cert.qrVerifyUrl !== qrResult.verifyUrl) {
+      cert.qrVerifyUrl = qrResult.verifyUrl;
+      await cert.save();
+    }
+
     res.set("Content-Type", "image/png");
+    res.set("Content-Disposition", `attachment; filename="QR-${certId}.png"`);
     res.set("Cache-Control", "no-store, max-age=0");
-    res.set("X-QR-Verify-URL", verifyUrl);
+    res.set("X-QR-Verify-URL", qrResult.verifyUrl);
     return res.send(buffer);
   } catch (err) {
     next(err);

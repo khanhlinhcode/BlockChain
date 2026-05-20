@@ -98,6 +98,7 @@ jest.mock("../src/services/blockchainService", () => {
       blockNumber: 8,
       gasUsed: "21000",
     }),
+    assertSignerIsAdmin: jest.fn().mockResolvedValue(true),
     getSignerAddress: jest.fn(() => "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"),
     isAdminOnChain: jest.fn().mockResolvedValue(false),
     getAuditEvents: jest.fn().mockResolvedValue([]),

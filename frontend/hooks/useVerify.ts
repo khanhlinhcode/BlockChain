@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { ethers } from "ethers";
 import CertRegistryABI from "@/lib/abi/CertRegistry.json";
+import { verifyApi } from "@/lib/api";
 import { CHAIN_ID, CONTRACT_ADDRESS, IPFS_GATEWAY, SUPPORTED_CHAINS } from "@/lib/constants";
 import { calculateFileHash } from "@/lib/utils";
 import type { Certificate, VerifyResult } from "@/types";
@@ -23,6 +24,10 @@ type ContractCertificate = {
   certId?: string;
   courseName?: string;
   issuingOrg?: string;
+};
+
+type VerifyOptions = {
+  backendFallback?: boolean;
 };
 
 const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_KEY;
@@ -134,6 +139,22 @@ export function normalizeDirectVerifyError(err: unknown): string {
   return "Xác thực thất bại. Vui lòng thử lại.";
 }
 
+async function verifyByIdWithBackendFallback(certId: string): Promise<VerifyResult> {
+  const fallback = await verifyApi.byId(certId);
+  return {
+    ...fallback,
+    source: "backend",
+  };
+}
+
+async function verifyByFileWithBackendFallback(file: File): Promise<VerifyResult> {
+  const fallback = await verifyApi.byFile(file);
+  return {
+    ...fallback,
+    source: "backend",
+  };
+}
+
 export function useVerify() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
@@ -166,8 +187,9 @@ export function useVerify() {
   }, [getProvider]);
 
   const verifyById = useCallback(
-    async (certId: string): Promise<VerifyResult | null> => {
+    async (certId: string, options: VerifyOptions = {}): Promise<VerifyResult | null> => {
       const normalizedId = certId.trim().toUpperCase();
+      const shouldFallbackToBackend = options.backendFallback !== false;
       if (!normalizedId) {
         setError("Vui lòng nhập mã chứng chỉ.");
         return null;
@@ -186,10 +208,32 @@ export function useVerify() {
 
         setCurrentStep("Xác thực kết quả...");
         const data = buildResult(cert);
+        if (!data.exists) {
+          if (shouldFallbackToBackend) {
+            setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+            const fallback = await verifyByIdWithBackendFallback(normalizedId);
+            setResult(fallback);
+            return fallback;
+          }
+          setResult(data);
+          return data;
+        }
+
         setResult(data);
         return data;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err || "");
+        if (shouldFallbackToBackend) {
+          try {
+            setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+            const fallback = await verifyByIdWithBackendFallback(normalizedId);
+            setResult(fallback);
+            return fallback;
+          } catch {
+            // If the backend cannot confirm it either, keep the direct-chain result.
+          }
+        }
+
         if (msg.toLowerCase().includes("certificate not found")) {
           const data = notFound();
           setResult(data);
@@ -224,10 +268,26 @@ export function useVerify() {
 
         setCurrentStep("Xác thực kết quả...");
         const data = buildResult(cert, bytes32Hash);
+        if (!data.exists) {
+          setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+          const fallback = await verifyByFileWithBackendFallback(file);
+          setResult(fallback);
+          return fallback;
+        }
+
         setResult(data);
         return data;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err || "");
+        try {
+          setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+          const fallback = await verifyByFileWithBackendFallback(file);
+          setResult(fallback);
+          return fallback;
+        } catch {
+          // If the backend cannot confirm it either, keep the direct-chain result.
+        }
+
         if (msg.toLowerCase().includes("certificate not found")) {
           const data = notFound();
           setResult(data);

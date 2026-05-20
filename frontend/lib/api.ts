@@ -134,9 +134,13 @@ function normalizeCertificate(raw: unknown): Certificate {
     revokedAt: toIsoString(cert.revokedAt),
     revokedBy: asOptionalString(cert.revokedBy),
     revokeReason: asOptionalString(cert.revokeReason),
+    revokeTxHash: asOptionalString(cert.revokeTxHash),
+    revokeBlockNumber: asNumber(cert.revokeBlockNumber),
     txHash: asString(cert.txHash),
     blockNumber: asNumber(cert.blockNumber),
     qrCodeUrl: asOptionalString(cert.qrCodeUrl),
+    qrVerifyUrl: asOptionalString(cert.qrVerifyUrl),
+    qrCode: asOptionalString(cert.qrCode),
     verificationCount: asNumber(cert.verificationCount),
     lastVerifiedAt: toIsoString(cert.lastVerifiedAt),
     createdAt,
@@ -144,7 +148,7 @@ function normalizeCertificate(raw: unknown): Certificate {
     issueDate: toIsoString(cert.issueDate),
     status: normalizeStatus(cert),
     recipientEmail: asOptionalString(cert.recipientEmail),
-    verifyUrl: asOptionalString(cert.verifyUrl),
+    verifyUrl: asOptionalString(cert.verifyUrl ?? cert.qrVerifyUrl),
     metadata: isRecord(cert.metadata) ? cert.metadata : undefined,
   };
 }
@@ -436,7 +440,12 @@ export const authApi = {
   }): Promise<AdminUser> {
     const response = await apiClient.post("/auth/link-wallet", data);
     const payload = extractResponseData<{ admin: unknown }>(response.data);
-    return normalizeAdmin(payload.admin);
+    const admin = normalizeAdmin(payload.admin);
+    const token = getStoredToken();
+    if (token) {
+      saveAuthSession(token, admin, getRefreshToken() || undefined);
+    }
+    return admin;
   },
 
   async logout(): Promise<void> {

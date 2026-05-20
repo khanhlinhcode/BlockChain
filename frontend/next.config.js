@@ -1,3 +1,20 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const fs = require("fs");
+const path = require("path");
+
+function readLocalEnv(key) {
+  try {
+    const envPath = path.join(__dirname, ".env.local");
+    const content = fs.readFileSync(envPath, "utf8");
+    const line = content
+      .split(/\r?\n/)
+      .find((entry) => entry.trim().startsWith(`${key}=`));
+    return line ? line.split("=").slice(1).join("=").trim().replace(/^"|"$/g, "") : "";
+  } catch {
+    return "";
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const backendBaseUrl = (
   process.env.SERVER_API_URL ||
@@ -5,10 +22,22 @@ const backendBaseUrl = (
   "http://localhost:5000/api"
 ).replace(/\/api\/?$/, "");
 const rpcBaseUrl = process.env.NEXT_PUBLIC_RPC_URL || "";
+const frontendHost = (() => {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_FRONTEND_URL || readLocalEnv("NEXT_PUBLIC_FRONTEND_URL") || "").hostname;
+  } catch {
+    return "";
+  }
+})();
 
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    frontendHost,
+  ].filter(Boolean),
   images: {
     remotePatterns: [
       {
@@ -23,8 +52,9 @@ const nextConfig = {
   },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
+    NEXT_PUBLIC_FRONTEND_URL: process.env.NEXT_PUBLIC_FRONTEND_URL || "",
     NEXT_PUBLIC_CONTRACT_ADDRESS: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "",
-    NEXT_PUBLIC_CHAIN_ID: process.env.NEXT_PUBLIC_CHAIN_ID || "80001",
+    NEXT_PUBLIC_CHAIN_ID: process.env.NEXT_PUBLIC_CHAIN_ID || "11155111",
     NEXT_PUBLIC_RPC_URL: process.env.NEXT_PUBLIC_RPC_URL || "",
     NEXT_PUBLIC_ALCHEMY_KEY: process.env.NEXT_PUBLIC_ALCHEMY_KEY || "",
     NEXT_PUBLIC_IPFS_GATEWAY:

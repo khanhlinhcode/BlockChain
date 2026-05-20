@@ -29,6 +29,14 @@ function ServiceWorkerRegistrar() {
             // Some mobile browsers expose serviceWorker but reject registration reads.
           });
       }
+      if (typeof window.caches?.keys === "function") {
+        window.caches
+          .keys()
+          .then((keys) => Promise.all(keys.map((key) => window.caches.delete(key))))
+          .catch(() => {
+            // Cache cleanup is best-effort in development.
+          });
+      }
       return;
     }
 

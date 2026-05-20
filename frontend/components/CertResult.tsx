@@ -175,7 +175,7 @@ export default function CertResult({
     return (
       <motion.section
         className="rounded-2xl border border-[var(--teal-border)] bg-[var(--teal-glow)] p-6"
-        initial={{ opacity: 0, y: 14 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="mb-5 flex items-center gap-3 text-[var(--text-primary)]">
@@ -195,7 +195,7 @@ export default function CertResult({
             return (
               <motion.div
                 key={label}
-                initial={{ opacity: 0, y: 6 }}
+                initial={false}
                 animate={{ opacity: verificationStep >= index ? 1 : 0.5, y: 0 }}
                 transition={{ delay: index * 0.08 }}
                 className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3"
@@ -263,7 +263,7 @@ export default function CertResult({
             ? "border border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)] shadow-[var(--glow-red)]"
             : "border border-[rgba(0,214,143,0.3)] bg-[var(--green-glow)] shadow-[var(--glow-green)]"
         }`}
-        initial={{ opacity: 0, y: 14 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="flex flex-wrap items-center gap-3">
@@ -413,7 +413,7 @@ export default function CertResult({
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div
               className="inline-flex items-center gap-2 rounded-full border border-[var(--teal-border)] bg-[var(--teal-glow)] px-3.5 py-1.5 text-xs text-[var(--teal)]"
-              style={{ fontFamily: "var(--font-dm)" }}
+              style={{ fontFamily: "var(--font-body)" }}
             >
               ⛓ Verified directly on {chainName} blockchain
             </div>

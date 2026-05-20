@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
 import {
@@ -77,7 +77,7 @@ export default function AdminDashboardPage() {
     document.title = `${t("admin.dashboard")} | CertChain`;
   }, [t]);
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
@@ -94,11 +94,11 @@ export default function AdminDashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
   useEffect(() => {
     const loadGas = async () => {

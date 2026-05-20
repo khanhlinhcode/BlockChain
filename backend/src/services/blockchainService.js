@@ -7,6 +7,7 @@ const ABI_PATH_CANDIDATES = [
   path.join(__dirname, "../../../smart-contract/artifacts/contracts/CertRegistry.sol/CertRegistry.json"),
   path.join(__dirname, "../abi/CertRegistry.json"),
 ];
+const DEPLOYMENTS_PATH = path.join(__dirname, "../../../smart-contract/deployments.json");
 
 let provider = null;
 let signer = null;
@@ -41,6 +42,15 @@ function loadContractArtifact() {
     bytecode: null,
     source: "fallback",
   };
+}
+
+function loadDeployments() {
+  try {
+    if (!fs.existsSync(DEPLOYMENTS_PATH)) return {};
+    return JSON.parse(fs.readFileSync(DEPLOYMENTS_PATH, "utf-8"));
+  } catch {
+    return {};
+  }
 }
 
 function normalizeHash(hash) {
@@ -145,6 +155,28 @@ async function getContract() {
 async function getProvider() {
   await initDefaultClient();
   return provider;
+}
+
+async function assertSignerIsAdmin() {
+  await initDefaultClient();
+  if (!signerAddress) {
+    throw new Error("Backend blockchain signer is unavailable");
+  }
+
+  let isAdmin = false;
+  try {
+    isAdmin = await contract.isAdmin(signerAddress);
+  } catch (error) {
+    throw new Error(`Unable to check backend wallet admin status: ${error.message}`);
+  }
+
+  if (!isAdmin) {
+    throw new Error(
+      `Backend wallet ${signerAddress} is not an on-chain admin for contract ${process.env.CONTRACT_ADDRESS}. Set ADMIN_PRIVATE_KEY to a Sepolia admin wallet or add this wallet as an admin.`
+    );
+  }
+
+  return true;
 }
 
 function resetDefaultClient() {
@@ -494,6 +526,54 @@ async function queryFilterInChunks(contractInstance, eventFilter, fromBlock, toB
   return allEvents;
 }
 
+async function resolveContractDeployBlock(latestBlock) {
+  const configuredStartBlock = parsePositiveInt(process.env.CONTRACT_DEPLOY_BLOCK, -1);
+  if (configuredStartBlock >= 0) {
+    return configuredStartBlock;
+  }
+
+  const deployments = loadDeployments();
+  const contractAddress = String(process.env.CONTRACT_ADDRESS || contract?.target || "").toLowerCase();
+
+  try {
+    const network = await provider.getNetwork();
+    const byChainId = deployments[String(network.chainId)];
+    const candidates = [
+      byChainId,
+      ...Object.values(deployments).filter((item) => item !== byChainId),
+    ].filter(Boolean);
+
+    const deployment = candidates.find((item) => {
+      const deployedAddress = String(item.contractAddress || item.address || "").toLowerCase();
+      return deployedAddress && deployedAddress === contractAddress;
+    }) || byChainId;
+
+    const savedBlock = parsePositiveInt(deployment?.blockNumber, -1);
+    if (savedBlock >= 0) {
+      return savedBlock;
+    }
+
+    const txHash = deployment?.transactionHash;
+    if (txHash && /^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      const receipt = await provider.getTransactionReceipt(txHash);
+      if (receipt?.blockNumber != null) {
+        return Number(receipt.blockNumber);
+      }
+    }
+  } catch {
+    // Fall back to a bounded lookback when deployment metadata cannot be read.
+  }
+
+  const fallbackLookback = Math.max(
+    100,
+    parsePositiveInt(
+      process.env.AUDIT_LOOKBACK_BLOCKS,
+      String(process.env.ALCHEMY_URL || "").includes("sepolia") ? 5000 : 300
+    )
+  );
+  return Math.max(0, latestBlock - fallbackLookback);
+}
+
 /**
  * Read audit events from the contract logs.
  * @param {{eventType?: "all"|"issued"|"revoked"|"verified", from?: string, to?: string, limit?: number}} filters
@@ -519,15 +599,17 @@ async function getAuditEvents(filters = {}) {
   }
 
   const latestBlock = await provider.getBlockNumber();
-  const configuredStartBlock = parsePositiveInt(process.env.CONTRACT_DEPLOY_BLOCK, -1);
   const fallbackLookback = Math.max(
     100,
-    parsePositiveInt(process.env.AUDIT_LOOKBACK_BLOCKS, 300)
+    parsePositiveInt(
+      process.env.AUDIT_LOOKBACK_BLOCKS,
+      String(process.env.ALCHEMY_URL || "").includes("sepolia") ? 1000 : 300
+    )
   );
-  const defaultFromBlock =
-    configuredStartBlock >= 0
-      ? configuredStartBlock
-      : Math.max(0, latestBlock - fallbackLookback);
+  const scanFromDeploy = String(process.env.AUDIT_SCAN_FROM_DEPLOY || "").toLowerCase() === "true";
+  const defaultFromBlock = scanFromDeploy
+    ? await resolveContractDeployBlock(latestBlock)
+    : Math.max(0, latestBlock - fallbackLookback);
 
   let fromBlock = defaultFromBlock;
   let toBlock = latestBlock;
@@ -805,6 +887,7 @@ async function testBlockchainService() {
 module.exports = {
   getProvider,
   getContract,
+  assertSignerIsAdmin,
   getCertOnChain,
   issueCertOnChain,
   verifyCertOnChain,

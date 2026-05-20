@@ -1,0 +1,60 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: certchain-sepolia-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_sepolia_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    image: node:20-alpine
+    container_name: certchain-sepolia-backend
+    working_dir: /app
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: development
+      PORT: 5001
+      MONGODB_URI: mongodb://mongodb:27017/certchain
+    command: sh -c "npm ci && npm run dev"
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./backend:/app
+      - backend_sepolia_node_modules:/app/node_modules
+      - ./backend/uploads:/app/uploads
+      - ./smart-contract:/smart-contract:ro
+
+  frontend:
+    image: node:20-alpine
+    container_name: certchain-sepolia-frontend
+    working_dir: /app
+    depends_on:
+      - backend
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      NODE_ENV: development
+      SERVER_API_URL: http://backend:5001/api
+    command: sh -c "npm ci && npm run dev -- -H 0.0.0.0"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_sepolia_node_modules:/app/node_modules
+
+volumes:
+  mongodb_sepolia_data:
+  backend_sepolia_node_modules:
+  frontend_sepolia_node_modules:

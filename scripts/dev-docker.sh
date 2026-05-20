@@ -4,6 +4,26 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 COMPOSE_FILE="docker-compose.dev.yml"
+MODE="${1:-${CERTCHAIN_CHAIN:-local}}"
+
+case "$MODE" in
+  local|hardhat)
+    ;;
+  sepolia)
+    exec "$ROOT_DIR/scripts/dev-sepolia.sh"
+    ;;
+  *)
+    cat >&2 <<'ERR'
+Usage:
+  ./scripts/dev-docker.sh          # local Hardhat chain
+  ./scripts/dev-docker.sh local    # local Hardhat chain
+  ./scripts/dev-docker.sh sepolia  # Ethereum Sepolia testnet
+
+You can also set CERTCHAIN_CHAIN=local or CERTCHAIN_CHAIN=sepolia.
+ERR
+    exit 1
+    ;;
+esac
 
 if [[ -z "${CERTCHAIN_HOST_IP:-}" ]]; then
   if command -v ipconfig >/dev/null 2>&1; then
@@ -16,6 +36,8 @@ if [[ -z "${CERTCHAIN_HOST_IP:-}" ]]; then
 fi
 
 export FRONTEND_URL="${FRONTEND_URL:-http://${CERTCHAIN_HOST_IP}:3000}"
+export PUBLIC_FRONTEND_URL="${PUBLIC_FRONTEND_URL:-$FRONTEND_URL}"
+export NEXT_PUBLIC_FRONTEND_URL="${NEXT_PUBLIC_FRONTEND_URL:-$FRONTEND_URL}"
 export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://${CERTCHAIN_HOST_IP}:5001/api}"
 export NEXT_PUBLIC_RPC_URL="${NEXT_PUBLIC_RPC_URL:-http://${CERTCHAIN_HOST_IP}:8545}"
 export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://${CERTCHAIN_HOST_IP}:3000}"
@@ -26,6 +48,10 @@ CertChain Docker dev stack
 - Backend:  ${NEXT_PUBLIC_API_URL}
 - Hardhat:  ${NEXT_PUBLIC_RPC_URL}
 INFO
+
+# The Next.js dev cache embeds public env values. Clear it before Docker start
+# so switching between Hardhat and Sepolia never serves stale client bundles.
+rm -rf frontend/.next
 
 # Force the one-shot deploy service to run on every start. The deploy script is
 # idempotent on local Hardhat, so this keeps contract state automatic without

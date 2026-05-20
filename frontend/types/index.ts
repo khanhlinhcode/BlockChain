@@ -13,9 +13,13 @@ export interface Certificate {
   revokedAt?: string;
   revokedBy?: string;
   revokeReason?: string;
+  revokeTxHash?: string;
+  revokeBlockNumber?: number;
   txHash: string;
   blockNumber: number;
   qrCodeUrl?: string;
+  qrVerifyUrl?: string;
+  qrCode?: string;
   verificationCount: number;
   lastVerifiedAt?: string;
   createdAt: string;

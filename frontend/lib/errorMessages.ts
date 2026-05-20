@@ -127,6 +127,13 @@ function matchFriendlyMessage(message: string): string | null {
     return msg("wrongNetwork");
   }
 
+  if (
+    normalized.includes("backend wallet") &&
+    (normalized.includes("not authorized") || normalized.includes("not an on-chain admin"))
+  ) {
+    return msg("forbidden");
+  }
+
   if (normalized.includes("network error")) {
     return msg("timeout");
   }

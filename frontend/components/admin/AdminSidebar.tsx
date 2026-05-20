@@ -10,9 +10,10 @@ import {
   Loader2,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { getStoredAdmin } from "@/lib/auth";
 import { CHAIN_ID, SUPPORTED_CHAINS } from "@/lib/constants";
 import { formatAddress } from "@/lib/utils";
 import { useMetaMask } from "@/hooks/useMetaMask";
@@ -20,6 +21,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import LanguageToggle from "@/components/LanguageToggle";
 import { useLanguage } from "@/context/LanguageContext";
 import LogoutButton from "./LogoutButton";
+import type { AdminUser } from "@/types";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", labelKey: "admin.dashboard", icon: BarChart3 },
@@ -33,16 +35,47 @@ export default function AdminSidebar() {
   const { t } = useLanguage();
   const { account, chainId, connectWallet, signMessage } = useMetaMask();
   const [linkingWallet, setLinkingWallet] = useState(false);
+  const [linkedWalletAddress, setLinkedWalletAddress] = useState<string | null>(() => {
+    const admin = getStoredAdmin<AdminUser>();
+    return admin?.walletAddress || null;
+  });
   const chainName = SUPPORTED_CHAINS[chainId || CHAIN_ID]?.name || t("common.unknown");
   const hasWallet = Boolean(account);
+  const hasLinkedWallet = Boolean(linkedWalletAddress);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .getMe()
+      .then((admin) => {
+        if (!cancelled) setLinkedWalletAddress(admin.walletAddress || null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          const admin = getStoredAdmin<AdminUser>();
+          setLinkedWalletAddress(admin?.walletAddress || null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const linkCurrentWallet = async () => {
+    if (hasLinkedWallet) {
+      toast.info(t("admin.linkWalletLinked"));
+      return;
+    }
+
     try {
       setLinkingWallet(true);
-      const address = account || (await connectWallet());
+      const address = await connectWallet();
       const message = `${t("admin.linkWalletSign")}\nAddress: ${address}\nNonce: ${Date.now()}`;
       const signature = await signMessage(message);
-      await api.linkWallet(address, signature, message);
+      const admin = await api.linkWallet(address, signature, message);
+      setLinkedWalletAddress(admin.walletAddress || address);
       toast.success(t("admin.linkWalletSuccess"));
     } catch {
       toast.error(t("admin.linkWalletError"));
@@ -123,7 +156,13 @@ export default function AdminSidebar() {
           className="sidebar-link-wallet flex w-full items-center gap-2 px-3 text-[13px] font-bold text-[var(--teal)] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {linkingWallet ? <Loader2 size={15} className="animate-spin" /> : <Wallet size={15} />}
-          {linkingWallet ? t("common.loading") : hasWallet ? t("admin.linkWallet") : t("admin.connectWallet")}
+          {linkingWallet
+            ? t("common.loading")
+            : hasLinkedWallet
+            ? t("admin.linkWalletLinked")
+            : hasWallet
+            ? t("admin.linkWallet")
+            : t("admin.connectWallet")}
         </button>
         <LogoutButton />
       </div>

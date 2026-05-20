@@ -112,9 +112,18 @@ docker compose version
 
 ### Khởi Chạy Toàn Bộ Project
 
+Chạy local Hardhat:
+
 ```bash
 cd /Users/tolinh/Documents/Programming/blockchain/certchain
 ./scripts/dev-docker.sh
+```
+
+Chạy Sepolia testnet bằng cùng entrypoint Docker:
+
+```bash
+cd /Users/tolinh/Documents/Programming/blockchain/certchain
+./scripts/dev-docker.sh sepolia
 ```
 
 Script sẽ tự lấy IP LAN của máy và in ra dạng:
@@ -209,7 +218,8 @@ cd /Users/tolinh/Documents/Programming/blockchain/certchain
 `scripts/dev-docker.sh` tự động:
 
 - Detect IP LAN của máy Mac.
-- Set `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_RPC_URL`, `CORS_ALLOWED_ORIGINS`.
+- Set `FRONTEND_URL`, `PUBLIC_FRONTEND_URL`, `NEXT_PUBLIC_FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_RPC_URL`, `CORS_ALLOWED_ORIGINS`.
+- QR xác thực dùng `PUBLIC_FRONTEND_URL`/`NEXT_PUBLIC_FRONTEND_URL`; khi quét bằng điện thoại, giá trị này phải là IP LAN hoặc domain thật, không phải `localhost`.
 - Start MongoDB container.
 - Start Hardhat local node.
 - Chạy deploy contract local.
@@ -222,6 +232,143 @@ Vì vậy khi chạy Docker dev:
 - Không cần chạy `npx hardhat node` thủ công.
 - Không cần deploy contract thủ công.
 - Không cần sửa `MONGODB_URI` trong `backend/.env` sang Docker host.
+
+## Chạy Bằng Docker Nhưng Lưu Trên Sepolia Testnet
+
+Chế độ này dùng MongoDB/backend/frontend trong Docker, nhưng giao dịch `issueCertificate()` được ghi lên Ethereum Sepolia thật qua Alchemy RPC. Không chạy Hardhat local.
+
+Điểm khác nhau:
+
+- `./scripts/dev-docker.sh` hoặc `./scripts/dev-docker.sh local`: lưu on-chain vào Hardhat local `31337`.
+- `./scripts/dev-docker.sh sepolia`: lưu on-chain vào Sepolia testnet `11155111`.
+- `./scripts/dev-sepolia.sh` vẫn tồn tại như alias nội bộ cho chế độ Sepolia.
+
+### 1. Chuẩn Bị Sepolia
+
+Cần có:
+
+- Alchemy Sepolia RPC URL.
+- Ví deploy/backend có Sepolia ETH testnet.
+- `PRIVATE_KEY` của ví deploy trong `smart-contract/.env`.
+- `ADMIN_PRIVATE_KEY` trong `backend/.env`. Ví này phải là admin của contract. Nếu dùng cùng ví deploy thì deployer mặc định đã là admin.
+- Không dùng private key Hardhat local `0xac0974...f80` cho Sepolia. Key đó map tới `0xf39F...2266` và không có quyền trên contract Sepolia.
+
+Ví dụ `smart-contract/.env`:
+
+```env
+PRIVATE_KEY=0x_your_deployer_private_key
+ALCHEMY_SEPOLIA_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+ETHERSCAN_API_KEY=your_etherscan_key_optional
+```
+
+Ví dụ `backend/.env`:
+
+```env
+PORT=5001
+MONGODB_URI=mongodb://127.0.0.1:27017/certchain
+JWT_SECRET=change_me
+JWT_REFRESH_SECRET=change_me_refresh
+PINATA_API_KEY=your_pinata_key
+PINATA_SECRET_KEY=your_pinata_secret
+PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
+ALCHEMY_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+ADMIN_PRIVATE_KEY=0x_your_backend_or_deployer_private_key
+CONTRACT_ADDRESS=0x_fill_after_deploy
+FRONTEND_URL=http://localhost:3000
+PUBLIC_FRONTEND_URL=http://localhost:3000
+NEXT_PUBLIC_FRONTEND_URL=http://localhost:3000
+BASE_URL=http://localhost:3000
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=Admin@123456
+```
+
+Không commit private key thật.
+
+### 2. Deploy Contract Lên Sepolia
+
+```bash
+cd /Users/tolinh/Documents/Programming/blockchain/certchain/smart-contract
+npm ci
+npm run deploy:sepolia
+```
+
+Sau khi deploy, copy dòng:
+
+```txt
+Contract address: 0x...
+```
+
+dán vào:
+
+`backend/.env`:
+
+```env
+CONTRACT_ADDRESS=0x_your_sepolia_contract_address
+ALCHEMY_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+```
+
+`frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x_your_sepolia_contract_address
+NEXT_PUBLIC_CHAIN_ID=11155111
+NEXT_PUBLIC_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+NEXT_PUBLIC_ALCHEMY_KEY=YOUR_KEY
+```
+
+### 3. Chạy Docker Sepolia
+
+Nếu đang chạy stack Hardhat local thì dừng trước:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+Chạy Sepolia:
+
+```bash
+cd /Users/tolinh/Documents/Programming/blockchain/certchain
+./scripts/dev-docker.sh sepolia
+```
+
+Script sẽ in:
+
+```txt
+CertChain Sepolia Docker stack
+- Frontend: http://...
+- Backend:  http://.../api
+- RPC:      https://eth-sepolia.g.alchemy.com/v2/...
+- Chain:    Sepolia (11155111)
+- Contract: 0x...
+```
+
+Seed admin:
+
+```bash
+curl -X POST http://localhost:5001/api/auth/seed
+```
+
+### 4. Kiểm Tra Giao Dịch Trên Sepolia
+
+Sau khi cấp chứng chỉ thành công, giao diện sẽ hiển thị:
+
+- `Mã giao dịch`
+- `Số block`
+- `Ví cấp chứng chỉ`
+
+Mở transaction trên Sepolia Etherscan:
+
+```txt
+https://sepolia.etherscan.io/tx/YOUR_TX_HASH
+```
+
+Mở contract trên Sepolia Etherscan:
+
+```txt
+https://sepolia.etherscan.io/address/YOUR_CONTRACT_ADDRESS
+```
+
+Lưu ý: chế độ “Cấp qua MetaMask” hiện dùng MetaMask để ký xác thực quản trị, sau đó backend wallet gửi giao dịch lên chain. Vì vậy `txHash` trên Sepolia là giao dịch của ví `ADMIN_PRIVATE_KEY`. Nếu muốn chính MetaMask gửi transaction trực tiếp thì cần chuyển flow issue sang browser wallet write + sync backend.
 
 ## Biến Môi Trường
 
@@ -262,11 +409,14 @@ DEFAULT_ADMIN_USERNAME=admin
 DEFAULT_ADMIN_PASSWORD=Admin@123456
 
 CONTRACT_DEPLOY_BLOCK=0
-AUDIT_LOOKBACK_BLOCKS=300
+AUDIT_LOOKBACK_BLOCKS=1000
 AUDIT_LOG_BLOCK_WINDOW=10
+AUDIT_SCAN_FROM_DEPLOY=false
+AUDIT_ENABLE_CHAIN_EVENTS=false
 ```
 
 `ADMIN_PRIVATE_KEY` chỉ dùng private key local của Hardhat account khi dev. Không dùng ví thật.
+`AUDIT_ENABLE_CHAIN_EVENTS=false` giúp trang nhật ký kiểm toán mượt hơn trên Sepolia free-tier; dữ liệu cấp/thu hồi vẫn lấy ổn định từ MongoDB. Chỉ bật `true` khi cần làm giàu nhật ký bằng log blockchain trực tiếp.
 
 ### Frontend `frontend/.env.local`
 
@@ -452,10 +602,22 @@ Chạy dev:
 ./scripts/dev-docker.sh
 ```
 
+Chạy dev nhưng ghi dữ liệu on-chain lên Sepolia:
+
+```bash
+./scripts/dev-docker.sh sepolia
+```
+
 Xem trạng thái:
 
 ```bash
 docker compose -f docker-compose.dev.yml ps
+```
+
+Xem trạng thái Sepolia stack:
+
+```bash
+docker compose -f docker-compose.sepolia.yml ps
 ```
 
 Xem log:
@@ -468,6 +630,12 @@ Restart frontend/backend sau khi sửa code:
 
 ```bash
 docker compose -f docker-compose.dev.yml restart frontend backend
+```
+
+Restart frontend/backend trong Sepolia stack:
+
+```bash
+docker compose -f docker-compose.sepolia.yml restart frontend backend
 ```
 
 Rebuild sạch frontend/backend:

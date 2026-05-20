@@ -70,19 +70,19 @@ export default function HomePage() {
             {t("home.subtitle")}
           </p>
 
-          <div className="mt-8 grid max-w-xl grid-cols-3 gap-3">
+          <div className="mt-9 grid max-w-xl grid-cols-3 gap-3.5">
             <Signal value="10k+" label={t("home.statIssued")} />
             <Signal value="100%" label={t("home.statHashLocked")} />
             <Signal value="<2s" label={t("home.statLookup")} />
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/#verify-section" className="btn-primary inline-flex items-center gap-2 px-5 py-3 text-sm">
+          <div className="mt-9 flex flex-wrap gap-3.5">
+            <Link href="/#verify-card" className="btn-primary inline-flex items-center gap-2 px-6 py-3.5 text-[16px]">
               {t("home.verifyNow")}
-              <ArrowRight size={16} />
+              <ArrowRight size={18} />
             </Link>
-            <Link href="/admin/login" className="btn-outline inline-flex items-center gap-2 px-5 py-3 text-sm">
-              <LockKeyhole size={16} />
+            <Link href="/admin/login" className="btn-outline inline-flex items-center gap-2 px-6 py-3.5 text-[16px]">
+              <LockKeyhole size={18} />
               {t("home.adminPortal")}
             </Link>
           </div>
@@ -92,7 +92,8 @@ export default function HomePage() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: 0.08 }}
-          className="lg:pl-4"
+          id="verify-card"
+          className="scroll-mt-28 lg:pl-4"
         >
           <VerifyPanel />
         </motion.div>
@@ -146,9 +147,11 @@ export default function HomePage() {
 
 function Signal({ value, label }: { value: string; label: string }) {
   return (
-    <div className="surface-panel px-4 py-4">
-      <p className="gradient-text text-2xl font-extrabold leading-none">{value}</p>
-      <p className="mt-2 text-xs font-medium text-[var(--text-muted)]">{label}</p>
+    <div className="surface-panel px-4 py-[18px] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--teal-border)] sm:px-5">
+      <p className="gradient-text font-display text-[28px] font-extrabold leading-none tracking-[-0.01em] sm:text-[32px]">
+        {value}
+      </p>
+      <p className="mt-2.5 text-[14px] font-semibold leading-5 text-[var(--text-secondary)] sm:text-[15px]">{label}</p>
     </div>
   );
 }

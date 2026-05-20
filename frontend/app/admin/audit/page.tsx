@@ -29,7 +29,12 @@ function eventTypeClass(type: AuditEventType): string {
 function useAuditEvents(filters: AuditEventFilters) {
   return useSWR(
     ["audit-events", filters.eventType || "all", filters.from || "", filters.to || "", filters.limit || 100] as const,
-    async () => api.getAuditEvents(filters)
+    async () => api.getAuditEvents(filters),
+    {
+      dedupingInterval: 15_000,
+      keepPreviousData: true,
+      revalidateOnFocus: false,
+    }
   );
 }
 
@@ -50,7 +55,7 @@ export default function AdminAuditPage() {
     [eventType, fromDate, toDate]
   );
 
-  const { data, isLoading, error, mutate } = useAuditEvents(filters);
+  const { data, isLoading, isValidating, error, mutate } = useAuditEvents(filters);
   const events = data || [];
   const explorerBase = SUPPORTED_CHAINS[CHAIN_ID]?.explorer || "";
 
@@ -105,9 +110,10 @@ export default function AdminAuditPage() {
             <button
               type="button"
               onClick={() => void mutate()}
+              disabled={isValidating}
               className="btn-ghost inline-flex items-center gap-2 px-3 py-2 text-[15px]"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={14} className={isValidating ? "animate-spin" : ""} />
               {t("common.refresh")}
             </button>
             <button
@@ -154,7 +160,7 @@ export default function AdminAuditPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
+              {isLoading && !events.length ? (
                 <AuditTableSkeleton />
               ) : events.length ? (
                 events.map((event) => (
@@ -172,7 +178,7 @@ export default function AdminAuditPage() {
         </div>
 
         <div className="space-y-3 p-4 md:hidden">
-          {isLoading ? (
+          {isLoading && !events.length ? (
             <AuditCardSkeleton />
           ) : events.length ? (
             events.map((event) => (

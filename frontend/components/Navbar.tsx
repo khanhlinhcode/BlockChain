@@ -20,7 +20,7 @@ const NAV_LINKS = [
 function Logo() {
   return (
     <Link href="/" className="group inline-flex items-center gap-3" aria-label="CertChain home">
-      <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--teal-border)] bg-[var(--teal-glow)] shadow-[0_0_26px_rgba(0,229,255,0.16)] transition-all duration-200 group-hover:border-[rgba(0,229,255,0.55)] group-hover:shadow-[0_0_34px_rgba(0,229,255,0.24)]">
+      <span className="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--teal-border)] bg-[var(--teal-glow)] shadow-[0_0_26px_rgba(0,229,255,0.16)] transition-all duration-200 group-hover:border-[rgba(0,229,255,0.55)] group-hover:shadow-[0_0_34px_rgba(0,229,255,0.24)]">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
           <path
             d="M7 3.5 17 3.5 22 12 17 20.5 7 20.5 2 12 7 3.5Z"
@@ -34,7 +34,7 @@ function Logo() {
           />
         </svg>
       </span>
-      <span className="font-display text-[26px] font-extrabold leading-none tracking-[-0.035em] text-[var(--text-primary)]">
+      <span className="font-display text-[28px] font-extrabold leading-none tracking-[-0.012em] text-[var(--text-primary)]">
         Cert<span className="gradient-text">Chain</span>
       </span>
     </Link>
@@ -54,7 +54,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 h-[76px] border-b border-[rgba(0,229,255,0.12)] bg-[var(--nav-bg)] shadow-[0_16px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl">
+      <header className="fixed inset-x-0 top-0 z-50 h-[80px] border-b border-[rgba(0,229,255,0.12)] bg-[var(--nav-bg)] shadow-[0_16px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl">
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[rgba(0,229,255,0.5)] to-transparent" />
         <div className="absolute inset-x-0 top-0 h-full bg-[radial-gradient(circle_at_50%_-30%,rgba(0,229,255,0.12),transparent_55%)]" />
 
@@ -68,7 +68,7 @@ export default function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="min-w-[120px] rounded-2xl px-4 py-2.5 text-center text-[15px] font-semibold text-[var(--text-secondary)] transition-all duration-200 hover:bg-[var(--teal-glow)] hover:text-[var(--text-primary)] xl:min-w-[138px] 2xl:min-w-[154px]"
+                className="min-w-[124px] rounded-2xl px-4 py-2.5 text-center text-[16px] font-semibold text-[var(--text-secondary)] transition-all duration-200 hover:bg-[var(--teal-glow)] hover:text-[var(--text-primary)] xl:min-w-[142px] 2xl:min-w-[158px]"
               >
                 {t(item.labelKey)}
               </Link>
@@ -79,7 +79,7 @@ export default function Navbar() {
             <MetaMaskConnect />
             <Link
               href="/admin/login"
-              className="inline-flex h-11 items-center gap-2 rounded-2xl border border-[rgba(0,229,255,0.28)] bg-[rgba(0,229,255,0.055)] px-4 text-[15px] font-semibold text-[var(--teal)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-200 hover:border-[rgba(0,229,255,0.55)] hover:bg-[var(--teal-glow)] hover:shadow-[0_0_26px_rgba(0,229,255,0.16)]"
+              className="inline-flex h-12 items-center gap-2 rounded-2xl border border-[rgba(0,229,255,0.28)] bg-[rgba(0,229,255,0.055)] px-4 text-[16px] font-semibold text-[var(--teal)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-200 hover:border-[rgba(0,229,255,0.55)] hover:bg-[var(--teal-glow)] hover:shadow-[0_0_26px_rgba(0,229,255,0.16)]"
             >
               <Lock size={16} />
               {t("nav.admin")}

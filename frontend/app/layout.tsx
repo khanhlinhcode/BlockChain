@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
 import "./globals.css";
 
-const vietnameseFont = Be_Vietnam_Pro({
-  subsets: ["latin", "vietnamese"],
-  variable: "--font-vietnam",
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  variable: "--font-jakarta",
   weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
 const mono = JetBrains_Mono({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-mono",
   weight: ["400", "500", "700"],
   display: "swap",
@@ -52,7 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       data-scroll-behavior="smooth"
       suppressHydrationWarning
-      className={`${vietnameseFont.variable} ${mono.variable}`}
+      className={`${jakarta.variable} ${mono.variable}`}
     >
       <body>
         <Providers>

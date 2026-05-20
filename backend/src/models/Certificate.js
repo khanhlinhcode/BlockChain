@@ -62,6 +62,14 @@ const certificateSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    revokeTxHash: {
+      type: String,
+      default: null,
+    },
+    revokeBlockNumber: {
+      type: Number,
+      default: null,
+    },
     txHash: {
       type: String,
       default: null,
@@ -73,6 +81,10 @@ const certificateSchema = new mongoose.Schema(
     qrCodeUrl: {
       type: String,
       default: null,
+    },
+    qrVerifyUrl: {
+      type: String,
+      default: "",
     },
     verificationCount: {
       type: Number,

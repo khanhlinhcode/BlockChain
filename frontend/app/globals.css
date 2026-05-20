@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --font-body: var(--font-vietnam);
-  --font-display: var(--font-vietnam);
+  --font-body: var(--font-jakarta);
+  --font-display: var(--font-jakarta);
 
   --bg-base: #07090d;
   --bg-surface: #0d1118;
@@ -106,7 +106,8 @@ html.light {
 
 body {
   font-family: var(--font-body), -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 16px;
+  font-size: 17px;
+  font-synthesis: none;
   background: var(--bg-base);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
@@ -123,7 +124,7 @@ h4,
 h5,
 h6 {
   font-family: var(--font-display), sans-serif;
-  letter-spacing: 0;
+  letter-spacing: -0.006em;
 }
 
 .mono,
@@ -262,60 +263,60 @@ pre,
 .eyebrow {
   color: var(--teal);
   font-family: var(--font-display), sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .page-title {
   color: var(--text-primary);
   font-family: var(--font-display), sans-serif;
-  font-size: clamp(40px, 4.5vw, 56px);
+  font-size: clamp(44px, 4.8vw, 60px);
   font-weight: 700;
   line-height: 1.05;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.012em;
 }
 
 .page-subtitle {
   color: var(--text-muted);
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.7;
 }
 
 .section-title {
   color: var(--text-primary);
   font-family: var(--font-display), sans-serif;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.25;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.006em;
 }
 
 .readable-table {
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .readable-table th {
   color: var(--text-muted);
-  font-size: 13px !important;
+  font-size: 14px !important;
   font-weight: 700;
   line-height: 1.4;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
 }
 
 .readable-table td {
-  font-size: 16px !important;
+  font-size: 17px !important;
   line-height: 1.6;
 }
 
 .readable-table .mono,
 .readable-table .text-xs {
-  font-size: 14px !important;
+  font-size: 15px !important;
 }
 
 .readable-table .status-badge {
-  font-size: 14px !important;
+  font-size: 15px !important;
   line-height: 1.4;
 }
 
@@ -323,13 +324,13 @@ pre,
   background: linear-gradient(135deg, var(--teal), var(--green));
   color: #020507;
   font-family: var(--font-body), sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   border-radius: var(--radius-full);
   padding: 12px 28px;
   border: none;
   cursor: pointer;
-  min-height: 44px;
+  min-height: 46px;
   transition: all 0.2s ease;
 }
 
@@ -352,11 +353,11 @@ pre,
   color: var(--teal);
   border: 1px solid var(--teal-border);
   font-family: var(--font-body), sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   border-radius: var(--radius-full);
   padding: 10px 24px;
-  min-height: 44px;
+  min-height: 46px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -387,7 +388,7 @@ textarea {
   border: 1px solid var(--border);
   color: var(--text-primary);
   border-radius: var(--radius);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 input:hover,

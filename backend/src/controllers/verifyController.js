@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const Certificate = require("../models/Certificate");
 const hashService = require("../services/hashService");
 const blockchainService = require("../services/blockchainService");
+const qrService = require("../services/qrService");
 
 const CERT_ID_LOOKUP_PATTERN = /^[A-Z0-9][A-Z0-9._:-]{0,79}$/;
 const VERIFY_CACHE_TTL_MS = 30 * 1000;
@@ -24,11 +25,49 @@ function setCachedVerifyById(certId, payload) {
   });
 }
 
+function trimUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isLocalUrl(value) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname);
+  } catch {
+    return true;
+  }
+}
+
+function frontendBaseUrl(req) {
+  const configuredUrls = [
+    process.env.PUBLIC_FRONTEND_URL,
+    process.env.NEXT_PUBLIC_FRONTEND_URL,
+    process.env.FRONTEND_URL,
+    process.env.BASE_URL,
+  ]
+    .map(trimUrl)
+    .filter(Boolean);
+  const origin = trimUrl(req?.headers?.origin || "");
+
+  return (
+    configuredUrls.find((url) => !isLocalUrl(url)) ||
+    (origin && !isLocalUrl(origin) ? origin : "") ||
+    configuredUrls[0] ||
+    origin ||
+    "http://localhost:3000"
+  );
+}
+
+function verifyUrlFor(certId, req) {
+  return qrService.buildVerifyUrl(certId, frontendBaseUrl(req));
+}
+
 /**
  * Build a standardized verification response.
  */
-function buildResponse(cert, onChain) {
+function buildResponse(cert, onChain, req) {
   const verifiedAt = new Date().toISOString();
+  const verifyUrl = cert?.certId ? verifyUrlFor(cert.certId, req) : "";
 
   return {
     success: true,
@@ -49,6 +88,8 @@ function buildResponse(cert, onChain) {
           issuedAt: cert.issuedAt,
           ipfsUrl: cert.ipfsUrl,
           qrCodeUrl: cert.qrCodeUrl,
+          qrVerifyUrl: verifyUrl,
+          verifyUrl,
           isRevoked: cert.isRevoked,
           revokedAt: cert.revokedAt,
           revokedBy: cert.revokedBy,
@@ -146,7 +187,7 @@ exports.verifyById = async (req, res, next) => {
     await appendVerificationLog(cert, req);
     await cert.save();
 
-    const payload = buildResponse(cert, onChain);
+    const payload = buildResponse(cert, onChain, req);
     if (payload.exists) {
       setCachedVerifyById(certId, payload);
     }
@@ -201,7 +242,7 @@ exports.verifyByFile = async (req, res, next) => {
     await appendVerificationLog(cert, req);
     await cert.save();
 
-    return res.json(buildResponse(cert, onChain));
+    return res.json(buildResponse(cert, onChain, req));
   } catch (err) {
     next(err);
   }
@@ -248,7 +289,7 @@ exports.verifyByHash = async (req, res, next) => {
       await cert.save();
     }
 
-    return res.json(buildResponse(cert, onChain));
+    return res.json(buildResponse(cert, onChain, req));
   } catch (err) {
     next(err);
   }

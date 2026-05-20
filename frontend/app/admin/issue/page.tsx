@@ -18,13 +18,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { API_BASE_URL, CHAIN_ID, SUPPORTED_CHAINS } from "@/lib/constants";
+import { CHAIN_ID, SUPPORTED_CHAINS } from "@/lib/constants";
 import { calculateFileHash, copyToClipboard, formatDate, truncateHash } from "@/lib/utils";
 import { getFriendlyError } from "@/lib/errorMessages";
 import { localeForLanguage } from "@/lib/i18n";
 import { useMetaMask } from "@/hooks/useMetaMask";
 import { useLanguage } from "@/context/LanguageContext";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import QRDisplay from "@/components/QRDisplay";
 import type { CertificateRecord } from "@/types";
 
 type FormValues = {
@@ -231,12 +232,18 @@ export default function AdminIssuePage() {
     }
   };
 
-  const qrImage = useMemo(() => {
-    if (!result?.qrCodeUrl) return "";
-    if (result.qrCodeUrl.startsWith("data:image")) return result.qrCodeUrl;
-    if (result.qrCodeUrl.startsWith("http://") || result.qrCodeUrl.startsWith("https://")) return result.qrCodeUrl;
-    const apiRoot = API_BASE_URL.replace(/\/api\/?$/, "").replace(/\/$/, "");
-    return `${apiRoot}${result.qrCodeUrl.startsWith("/") ? "" : "/"}${result.qrCodeUrl}`;
+  const verifyUrl = useMemo(() => {
+    if (!result?.certId) return "";
+    if (result.verifyUrl) return result.verifyUrl;
+    const encodedCertId = encodeURIComponent(result.certId);
+    const configuredFrontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL?.replace(/\/+$/, "");
+    if (configuredFrontendUrl) {
+      return `${configuredFrontendUrl}/verify/${encodedCertId}`;
+    }
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/verify/${encodedCertId}`;
+    }
+    return `/verify/${encodedCertId}`;
   }, [result]);
 
   const txUrl = useMemo(() => {
@@ -265,16 +272,21 @@ export default function AdminIssuePage() {
               <SummaryItem label={t("common.course")} value={result.courseName} />
               <SummaryItem label={t("common.organization")} value={result.issuingOrg} />
               <SummaryItem label={t("common.hash")} value={truncateHash(result.certHash, 10)} mono />
+              {result.issuerAddress ? (
+                <SummaryItem label={t("common.issuerAddress")} value={truncateHash(result.issuerAddress, 8)} mono />
+              ) : null}
+              {result.txHash ? (
+                <SummaryItem label={t("common.txHash")} value={truncateHash(result.txHash, 10)} mono />
+              ) : null}
+              {result.blockNumber ? (
+                <SummaryItem label={t("common.blockNumber")} value={`#${result.blockNumber}`} mono />
+              ) : null}
             </div>
 
-            {qrImage ? (
-              <div className="mt-6">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={qrImage}
-                  alt={t("issue.qrAlt")}
-                  className="mx-auto h-52 w-52 rounded-xl border border-[var(--border)] bg-white p-2"
-                />
+            {verifyUrl ? (
+              <div className="mt-6 flex flex-col items-center gap-3">
+                <p className="text-sm font-semibold text-[var(--text-secondary)]">{t("issue.qrAlt")}</p>
+                <QRDisplay value={verifyUrl} size={208} certId={result.certId} />
               </div>
             ) : null}
 

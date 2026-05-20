@@ -2,48 +2,83 @@ const QRCode = require("qrcode");
 const fs = require("fs");
 const path = require("path");
 
-// Ensure uploads/qr directory exists
 const QR_DIR = path.join(__dirname, "../../uploads/qr");
-if (!fs.existsSync(QR_DIR)) {
-  fs.mkdirSync(QR_DIR, { recursive: true });
+
+function ensureQrDir() {
+  if (!fs.existsSync(QR_DIR)) {
+    fs.mkdirSync(QR_DIR, { recursive: true });
+  }
 }
 
-/**
- * Generate a QR code encoding the verification URL.
- * Saves as PNG to /uploads/qr/{certId}.png and returns base64 string.
- * @param {string} certId - Certificate ID
- * @param {string} baseUrl - Frontend base URL
- * @returns {Promise<string>} Base64 PNG data URL
- */
-async function generateQRCode(certId, baseUrl) {
-  const verifyUrl = `${baseUrl}/verify/${certId}`;
-  const filePath = path.join(QR_DIR, `${certId}.png`);
+function normalizeBaseUrl(baseUrl) {
+  const value = String(baseUrl || process.env.FRONTEND_URL || "http://localhost:3000")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!value) {
+    throw new Error("Frontend base URL is required to generate QR code");
+  }
+  return value;
+}
 
-  const options = {
-    type: "png",
+function buildVerifyUrl(certId, baseUrl) {
+  const cleanCertId = String(certId || "").trim().toUpperCase();
+  if (!cleanCertId) {
+    throw new Error("certId is required to generate QR code");
+  }
+  return `${normalizeBaseUrl(baseUrl)}/verify/${encodeURIComponent(cleanCertId)}`;
+}
+
+function qrOptions(extra = {}) {
+  return {
+    errorCorrectionLevel: "H",
+    type: "image/png",
     width: 400,
     margin: 2,
-    color: { dark: "#000000", light: "#ffffff" },
-    errorCorrectionLevel: "H",
+    color: {
+      dark: "#000000",
+      light: "#FFFFFF",
+    },
+    ...extra,
   };
+}
 
-  // Save to file
+async function generateQRCode(certId, baseUrl) {
+  const cleanCertId = String(certId || "").trim().toUpperCase();
+  const verifyUrl = buildVerifyUrl(cleanCertId, baseUrl);
+  ensureQrDir();
+
+  const filePath = path.join(QR_DIR, `${cleanCertId}.png`);
+  const options = qrOptions();
+
+  if (process.env.NODE_ENV !== "test") {
+    console.log(`Generating QR for URL: ${verifyUrl}`);
+  }
+
+  const base64 = await QRCode.toDataURL(verifyUrl, options);
   await QRCode.toFile(filePath, verifyUrl, options);
 
-  // Also return as base64 data URL
-  const dataUrl = await QRCode.toDataURL(verifyUrl, options);
-  return dataUrl;
+  return {
+    base64,
+    filePath,
+    verifyUrl,
+    certId: cleanCertId,
+  };
 }
 
-/**
- * Get the file path of a saved QR code.
- * @param {string} certId
- * @returns {Promise<string|null>} File path or null if not found
- */
+async function generateQRCodeBase64(certId, baseUrl) {
+  const result = await generateQRCode(certId, baseUrl);
+  return result.base64;
+}
+
 async function getQRCodePath(certId) {
-  const filePath = path.join(QR_DIR, `${certId}.png`);
-  if (fs.existsSync(filePath)) return filePath;
-  return null;
+  const cleanCertId = String(certId || "").trim().toUpperCase();
+  const filePath = path.join(QR_DIR, `${cleanCertId}.png`);
+  return fs.existsSync(filePath) ? filePath : null;
 }
 
-module.exports = { generateQRCode, getQRCodePath };
+module.exports = {
+  generateQRCode,
+  generateQRCodeBase64,
+  getQRCodePath,
+  buildVerifyUrl,
+};

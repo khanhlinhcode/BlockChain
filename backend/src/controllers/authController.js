@@ -285,19 +285,24 @@ exports.getMe = async (req, res, next) => {
 
 /**
  * POST /api/auth/seed
- * Create default superadmin from env vars. Only runs if no admin exists.
+ * Create default superadmin from env vars. MetaMask login can create wallet-only
+ * admin records first, so the seed must be keyed by username instead of
+ * blocking on any admin document in the collection.
  */
 exports.seed = async (_req, res, next) => {
   try {
-    const count = await Admin.countDocuments();
-    if (count > 0) {
+    const username = String(process.env.DEFAULT_ADMIN_USERNAME || "admin")
+      .trim()
+      .toLowerCase();
+    const existing = await Admin.findOne({ username });
+    if (existing) {
       return res
         .status(400)
-        .json({ success: false, error: "Admin accounts already exist. Seed aborted." });
+        .json({ success: false, error: "Default admin already exists. Seed aborted." });
     }
 
     const admin = new Admin({
-      username: process.env.DEFAULT_ADMIN_USERNAME || "admin",
+      username,
       role: "superadmin",
     });
     admin.passwordHash = await bcrypt.hash(

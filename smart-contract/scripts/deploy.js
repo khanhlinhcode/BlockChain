@@ -27,6 +27,7 @@ async function main() {
   let certRegistry;
   let contractAddress;
   let deployTx = null;
+  let deployReceipt = null;
   let reusedDeployment = false;
 
   if (isLocalNetwork) {
@@ -46,12 +47,13 @@ async function main() {
 
     contractAddress = await certRegistry.getAddress();
     deployTx = certRegistry.deploymentTransaction();
+    deployReceipt = deployTx ? await deployTx.wait(1) : null;
   }
 
   console.log(reusedDeployment ? "✅ CertRegistry already deployed!" : "✅ CertRegistry deployed!");
   console.log("   Contract address:", contractAddress);
   console.log("   Transaction hash:", deployTx?.hash || "N/A");
-  console.log("   Block number:    ", deployTx?.blockNumber || "pending...\n");
+  console.log("   Block number:    ", deployReceipt?.blockNumber || deployTx?.blockNumber || "pending...\n");
 
   // ── Optional initial admin bootstrap ──
   const initialAdmin = process.env.INITIAL_ADMIN_ADDRESS;
@@ -117,6 +119,7 @@ async function main() {
     initialAdmin: initialAdmin || null,
     owner: await certRegistry.owner(),
     transactionHash: deployTx?.hash || null,
+    blockNumber: deployReceipt?.blockNumber || deployTx?.blockNumber || null,
     deployedAt: new Date().toISOString(),
     solcVersion: "0.8.20",
   };
@@ -155,6 +158,9 @@ async function main() {
   console.log("═══════════════════════════════════════════");
   console.log("\n💡 Add this to your backend .env:");
   console.log(`   CONTRACT_ADDRESS=${contractAddress}`);
+  if (deployReceipt?.blockNumber || deployTx?.blockNumber) {
+    console.log(`   CONTRACT_DEPLOY_BLOCK=${deployReceipt?.blockNumber || deployTx?.blockNumber}`);
+  }
 }
 
 main()
