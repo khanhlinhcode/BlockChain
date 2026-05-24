@@ -22,9 +22,8 @@ CertChain là hệ thống cấp, quản trị và xác thực chứng chỉ b�
 Admin đăng nhập
 → Nhập thông tin chứng chỉ
 → Upload PDF
-→ Backend tính SHA-256 hash
-→ Backend upload PDF lên IPFS
-→ Backend hoặc MetaMask gọi smart contract issueCertificate()
+→ Backend-signed mode: backend hash PDF, upload IPFS và gửi issueCertificate()
+→ MetaMask mode: frontend hash PDF, backend chỉ upload IPFS, MetaMask gửi issueCertificate()
 → MongoDB lưu metadata để dashboard tra cứu nhanh
 → Backend tạo QR trỏ tới /verify/{certId}
 ```
@@ -313,6 +312,7 @@ ALCHEMY_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 NEXT_PUBLIC_CONTRACT_ADDRESS=0x_your_sepolia_contract_address
 NEXT_PUBLIC_CHAIN_ID=11155111
 NEXT_PUBLIC_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+NEXT_PUBLIC_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 NEXT_PUBLIC_ALCHEMY_KEY=YOUR_KEY
 ```
 
@@ -368,7 +368,9 @@ Mở contract trên Sepolia Etherscan:
 https://sepolia.etherscan.io/address/YOUR_CONTRACT_ADDRESS
 ```
 
-Lưu ý: chế độ “Cấp qua MetaMask” hiện dùng MetaMask để ký xác thực quản trị, sau đó backend wallet gửi giao dịch lên chain. Vì vậy `txHash` trên Sepolia là giao dịch của ví `ADMIN_PRIVATE_KEY`. Nếu muốn chính MetaMask gửi transaction trực tiếp thì cần chuyển flow issue sang browser wallet write + sync backend.
+Chế độ `Cấp qua MetaMask` gọi `issueCertificate()` trực tiếp bằng signer của ví đang kết nối. Trên Sepolia Etherscan, trường `From` phải đúng ví MetaMask đó. Sau khi receipt thành công, frontend gọi backend sync để lưu MongoDB và tạo QR cho dashboard.
+
+Chế độ `Cấp qua backend` vẫn dùng `ADMIN_PRIVATE_KEY` của backend để gửi transaction. Dùng mode này khi cần ví server cấp chứng chỉ thay cho browser wallet.
 
 ## Biến Môi Trường
 

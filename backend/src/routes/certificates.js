@@ -14,7 +14,14 @@ router.use(verifyJWT);
 router.get("/stats", cert.stats);
 router.get("/audit", cert.audit);
 router.post("/sync-from-chain", cert.syncFromChain);
+router.post("/sync-issued", cert.syncFromChain);
 
+router.post(
+  "/prepare-metamask-issue",
+  ...uploadPdfField,
+  handleUploadError,
+  cert.prepareMetaMaskIssue
+);
 router.post("/issue", ...uploadPdfField, handleUploadError, cert.issue);
 router.get("/", cert.list);
 router.get("/:certId", cert.getById);

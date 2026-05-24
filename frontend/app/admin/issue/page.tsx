@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useDropzone } from "react-dropzone";
 import { z } from "zod";
+import { ethers } from "ethers";
 import {
   AlertTriangle,
   Check,
@@ -18,7 +19,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { CHAIN_ID, SUPPORTED_CHAINS } from "@/lib/constants";
+import {
+  CHAIN_ID,
+  CONTRACT_ABI,
+  CONTRACT_ADDRESS,
+  SUPPORTED_CHAINS,
+} from "@/lib/constants";
 import { calculateFileHash, copyToClipboard, formatDate, truncateHash } from "@/lib/utils";
 import { getFriendlyError } from "@/lib/errorMessages";
 import { localeForLanguage } from "@/lib/i18n";
@@ -60,6 +66,63 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getBrowserEthereum(): ethers.Eip1193Provider {
+  if (typeof window === "undefined") {
+    throw new Error("MetaMask is only available in the browser.");
+  }
+
+  const ethereum = (window as Window & { ethereum?: ethers.Eip1193Provider }).ethereum;
+  if (!ethereum) {
+    throw new Error("MetaMask is not installed.");
+  }
+  return ethereum;
+}
+
+function buildDirectIssueRecord({
+  certId,
+  certHash,
+  ipfsCID,
+  ipfsUrl,
+  recipientName,
+  courseName,
+  issuingOrg,
+  issuerAddress,
+  txHash,
+  blockNumber,
+}: {
+  certId: string;
+  certHash: string;
+  ipfsCID: string;
+  ipfsUrl: string;
+  recipientName: string;
+  courseName: string;
+  issuingOrg: string;
+  issuerAddress: string;
+  txHash: string;
+  blockNumber: number;
+}): CertificateRecord {
+  const now = new Date().toISOString();
+
+  return {
+    _id: txHash || certId,
+    certId,
+    certHash,
+    ipfsCID,
+    ipfsUrl,
+    recipientName,
+    courseName,
+    issuingOrg,
+    issuerAddress,
+    issuedAt: now,
+    isRevoked: false,
+    txHash,
+    blockNumber,
+    verificationCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export default function AdminIssuePage() {
   const { language, t } = useLanguage();
   const locale = localeForLanguage(language);
@@ -77,7 +140,6 @@ export default function AdminIssuePage() {
   const {
     account,
     connectWallet,
-    signMessage,
     switchNetwork,
     isCorrectNetwork,
   } = useMetaMask();
@@ -186,41 +248,115 @@ export default function AdminIssuePage() {
       setWalletStatus(null);
       setPipelineIndex(0);
 
+      let issued: CertificateRecord;
       if (mode === "metamask") {
-        const wallet = account || (await connectWallet());
+        if (!fileHash || !ethers.isHexString(fileHash, 32)) {
+          throw new Error(t("issue.hashWait"));
+        }
+        if (!CONTRACT_ADDRESS || !ethers.isAddress(CONTRACT_ADDRESS)) {
+          throw new Error("NEXT_PUBLIC_CONTRACT_ADDRESS is missing or invalid.");
+        }
+
+        if (!account) {
+          await connectWallet();
+        }
 
         if (!isCorrectNetwork) {
           toast.warning(t("issue.wrongNetwork"));
           await switchNetwork(CHAIN_ID);
         }
 
+        const uploadData = new FormData();
+        uploadData.append("pdfFile", file);
+        uploadData.append("certId", certId);
+        const prepared = await api.prepareMetaMaskIssue(uploadData);
+        if (!prepared.ipfsCID || !prepared.certHash) {
+          throw new Error("IPFS preparation did not return certificate proof data.");
+        }
+        if (prepared.certHash.toLowerCase() !== fileHash.toLowerCase()) {
+          throw new Error("PDF hash mismatch between browser and backend upload.");
+        }
+
+        setPipelineIndex(1);
         setWalletStatus(t("login.waitingMetamask"));
-        const message = `Issue CertChain certificate\nCertID: ${certId}\nHash: ${fileHash}\nNonce: ${Date.now()}\nWallet: ${wallet}`;
-        await signMessage(message);
+
+        let walletProvider = new ethers.BrowserProvider(getBrowserEthereum());
+        let network = await walletProvider.getNetwork();
+        if (Number(network.chainId) !== CHAIN_ID) {
+          toast.warning(t("issue.wrongNetwork"));
+          await switchNetwork(CHAIN_ID);
+          walletProvider = new ethers.BrowserProvider(getBrowserEthereum());
+          network = await walletProvider.getNetwork();
+        }
+        if (Number(network.chainId) !== CHAIN_ID) {
+          throw new Error(`Wrong network. Switch MetaMask to chain ${CHAIN_ID}.`);
+        }
+
+        const walletSigner = await walletProvider.getSigner();
+        const issuerAddress = await walletSigner.getAddress();
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, walletSigner);
+        if (!(await contract.isAdmin(issuerAddress))) {
+          throw new Error("Not authorized. Connected MetaMask wallet is not a CertRegistry admin.");
+        }
+
+        const tx = await contract.issueCertificate(
+          prepared.certHash,
+          certId,
+          prepared.ipfsCID,
+          values.recipientName,
+          values.courseName,
+          values.issuingOrg
+        );
+        const receipt = await tx.wait(1);
+        if (!receipt || receipt.status !== 1) {
+          throw new Error("MetaMask transaction failed on blockchain.");
+        }
+
+        setWalletStatus(t("login.txConfirmed"));
+        setPipelineIndex(2);
+
+        const fallback = buildDirectIssueRecord({
+          certId,
+          certHash: prepared.certHash,
+          ipfsCID: prepared.ipfsCID,
+          ipfsUrl: prepared.ipfsUrl,
+          recipientName: values.recipientName,
+          courseName: values.courseName,
+          issuingOrg: values.issuingOrg,
+          issuerAddress,
+          txHash: tx.hash,
+          blockNumber: Number(receipt.blockNumber),
+        });
+
+        try {
+          issued = await api.syncCertificateFromChain(tx.hash);
+        } catch (syncError: unknown) {
+          toast.warning(t("issue.syncWarning"));
+          issued = fallback;
+          if (process.env.NODE_ENV === "development") {
+            console.warn("Certificate issued on-chain but database sync failed.", syncError);
+          }
+        }
+        setPipelineIndex(3);
+      } else {
+        const formData = new FormData();
+        formData.append("pdfFile", file);
+        formData.append("recipientName", values.recipientName);
+        formData.append("courseName", values.courseName);
+        formData.append("issuingOrg", values.issuingOrg);
+        formData.append("certId", certId);
+
+        const request = api.issueCertificate(formData);
+        setPipelineIndex(1);
+        await wait(500);
+        setPipelineIndex(2);
+        await wait(500);
+        setPipelineIndex(3);
+        issued = (await request) as CertificateRecord;
       }
-
-      const formData = new FormData();
-      formData.append("pdfFile", file);
-      formData.append("recipientName", values.recipientName);
-      formData.append("courseName", values.courseName);
-      formData.append("issuingOrg", values.issuingOrg);
-      formData.append("certId", certId);
-
-      const request = api.issueCertificate(formData);
-
-      setPipelineIndex(1);
-      await wait(500);
-      setPipelineIndex(2);
-      await wait(500);
-      setPipelineIndex(3);
-
-      const issued = (await request) as CertificateRecord;
 
       setPipelineIndex(4);
       setResult(issued);
-      if (mode === "metamask") {
-        setWalletStatus(t("login.txConfirmed"));
-      }
       toast.success(t("issue.successToast"));
     } catch (err: unknown) {
       const message = getFriendlyError(err, t("issue.failed"));

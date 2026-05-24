@@ -36,6 +36,13 @@ type CertListParams = {
   sort?: string;
 };
 
+export type PreparedMetaMaskIssue = {
+  certId: string;
+  certHash: string;
+  ipfsCID: string;
+  ipfsUrl: string;
+};
+
 const API_BASE_URL =
   typeof window === "undefined" && process.env.SERVER_API_URL
     ? process.env.SERVER_API_URL
@@ -541,6 +548,18 @@ export const certApi = {
     });
   },
 
+  async prepareMetaMaskIssue(formData: FormData): Promise<PreparedMetaMaskIssue> {
+    const response = await apiClient.post("/certificates/prepare-metamask-issue", formData);
+    const payload = extractResponseData<Record<string, unknown>>(response.data);
+
+    return {
+      certId: asString(payload.certId),
+      certHash: asString(payload.certHash),
+      ipfsCID: asString(payload.ipfsCID),
+      ipfsUrl: asString(payload.ipfsUrl),
+    };
+  },
+
   async list(params: CertListParams): Promise<PaginatedResponse<Certificate>> {
     const safePage = Math.max(1, params.page ?? 1);
     const safeLimit = Math.max(1, params.limit ?? 20);
@@ -687,6 +706,8 @@ export const api = {
   getMe: () => authApi.getMe(),
 
   issueCertificate: (formData: FormData) => certApi.issue(formData),
+
+  prepareMetaMaskIssue: (formData: FormData) => certApi.prepareMetaMaskIssue(formData),
 
   syncCertificateFromChain: (txHash: string) => certApi.syncFromChain(txHash),
 

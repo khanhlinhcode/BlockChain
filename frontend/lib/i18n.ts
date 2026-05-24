@@ -299,7 +299,7 @@ export const translations = {
     "issue.backendMode": "Issue via Backend",
     "issue.backendModeDesc": "Uses server wallet, no MetaMask popup",
     "issue.metamaskMode": "Issue via MetaMask",
-    "issue.metamaskModeDesc": "Admin signs challenge before submission",
+    "issue.metamaskModeDesc": "Connected wallet sends the Sepolia transaction",
     "issue.gasEstimate": "Estimated gas: ~0.001 ETH (Sepolia testnet)",
     "issue.confirm": "Confirm & Issue Certificate",
     "issue.doNotClose": "Please don't close this page while blockchain transaction is processing.",
@@ -322,6 +322,7 @@ export const translations = {
     "issue.pdfOnlyAllowed": "Only PDF files up to 10MB are allowed.",
     "issue.wrongNetwork": "You are on the wrong network",
     "issue.successToast": "Certificate issued successfully",
+    "issue.syncWarning": "The blockchain transaction succeeded, but database sync needs a retry from the Certificates page.",
     "issue.failed": "Unable to issue certificate.",
 
     "certs.title": "Certificates",
@@ -749,7 +750,7 @@ export const translations = {
     "issue.backendMode": "Cấp qua backend",
     "issue.backendModeDesc": "Dùng ví server, không bật MetaMask",
     "issue.metamaskMode": "Cấp qua MetaMask",
-    "issue.metamaskModeDesc": "Quản trị viên ký xác thực trước khi gửi",
+    "issue.metamaskModeDesc": "Ví đã kết nối gửi giao dịch lên Sepolia",
     "issue.gasEstimate": "Ước tính gas: ~0.001 ETH (mạng Sepolia testnet)",
     "issue.confirm": "Xác nhận & cấp chứng chỉ",
     "issue.doNotClose": "Vui lòng không đóng trang khi giao dịch blockchain đang xử lý.",
@@ -772,6 +773,7 @@ export const translations = {
     "issue.pdfOnlyAllowed": "Chỉ cho phép file PDF tối đa 10MB.",
     "issue.wrongNetwork": "Bạn đang ở sai mạng",
     "issue.successToast": "Cấp chứng chỉ thành công",
+    "issue.syncWarning": "Giao dịch blockchain đã thành công nhưng đồng bộ cơ sở dữ liệu cần thử lại ở trang Chứng chỉ.",
     "issue.failed": "Không thể cấp chứng chỉ.",
 
     "certs.title": "Chứng chỉ",

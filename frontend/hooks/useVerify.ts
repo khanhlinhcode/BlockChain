@@ -8,10 +8,6 @@ import { CHAIN_ID, CONTRACT_ADDRESS, IPFS_GATEWAY, SUPPORTED_CHAINS } from "@/li
 import { calculateFileHash } from "@/lib/utils";
 import type { Certificate, VerifyResult } from "@/types";
 
-type EthereumProvider = ethers.Eip1193Provider & {
-  request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-};
-
 type ContractCertificate = {
   certHash?: string;
   issuer?: string;
@@ -32,17 +28,13 @@ type VerifyOptions = {
 
 const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_KEY;
 const RPC_URL =
+  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ||
   process.env.NEXT_PUBLIC_RPC_URL ||
   (CHAIN_ID === 11155111 && ALCHEMY_KEY
     ? `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
     : undefined) ||
   SUPPORTED_CHAINS[CHAIN_ID]?.rpcUrl ||
   "https://rpc.sepolia.org";
-
-function getEthereum(): EthereumProvider | null {
-  if (typeof window === "undefined") return null;
-  return (window as Window & { ethereum?: EthereumProvider }).ethereum ?? null;
-}
 
 function asNumber(value: unknown): number {
   try {
@@ -161,22 +153,12 @@ export function useVerify() {
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState("");
 
-  const getProvider = useCallback(async () => {
-    const ethereum = getEthereum();
-    if (ethereum) {
-      try {
-        const browserProvider = new ethers.BrowserProvider(ethereum);
-        const network = await browserProvider.getNetwork();
-        if (Number(network.chainId) === CHAIN_ID) {
-          return browserProvider;
-        }
-      } catch {
-        // Fall back to configured read-only RPC below.
-      }
-    }
-
-    return new ethers.JsonRpcProvider(RPC_URL, CHAIN_ID);
-  }, []);
+  // Public verification must work from QR scans on mobile browsers that do not
+  // have MetaMask. Always use the configured read-only RPC for these calls.
+  const getProvider = useCallback(
+    async () => new ethers.JsonRpcProvider(RPC_URL, CHAIN_ID),
+    []
+  );
 
   const getContract = useCallback(async () => {
     if (!CONTRACT_ADDRESS || !ethers.isAddress(CONTRACT_ADDRESS)) {

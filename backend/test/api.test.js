@@ -41,6 +41,7 @@ jest.mock("../src/services/blockchainService", () => {
         txHash === syncedTxHash
           ? {
               status: 1,
+              to: contractAddress,
               blockNumber: 15,
               logs: [
                 {
@@ -424,6 +425,45 @@ describe("Certificates protected routes", () => {
     expect(list.status).toBe(200);
     expect(list.body.data).toHaveLength(1);
     expect(list.body.data[0].recipientName).toBe("Synced User");
+  });
+
+  test("POST /api/certificates/sync-from-chain rejects a transaction for another contract", async () => {
+    const token = await createAdminToken();
+    blockchainService.getProvider.mockReturnValueOnce({
+      getTransactionReceipt: jest.fn().mockResolvedValue({
+        status: 1,
+        to: "0x2222222222222222222222222222222222222222",
+        blockNumber: 16,
+        logs: [],
+      }),
+    });
+
+    const res = await request(app)
+      .post("/api/certificates/sync-from-chain")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ txHash: `0x${"8".repeat(64)}` });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/configured CertRegistry/i);
+  });
+
+  test("POST /api/certificates/prepare-metamask-issue uploads IPFS data without chain write", async () => {
+    const token = await createAdminToken();
+    const res = await request(app)
+      .post("/api/certificates/prepare-metamask-issue")
+      .set("Authorization", `Bearer ${token}`)
+      .attach("pdfFile", makePdf("metamask direct"), {
+        filename: "metamask.pdf",
+        contentType: "application/pdf",
+      })
+      .field("certId", "CERT-2026-MMASK001");
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.ipfsCID).toBe("bafytestcid");
+    expect(res.body.certHash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(ipfsService.uploadPDFToIPFS).toHaveBeenCalled();
+    expect(blockchainService.issueCertOnChain).not.toHaveBeenCalled();
   });
 
   test("POST /api/certificates/issue without file returns 400", async () => {

@@ -72,6 +72,8 @@ export default function VerifyByIdPage() {
         if (chainData?.exists) {
           setServerResult({ ...chainData, source: "blockchain" });
           setHasCompletedLookup(true);
+          setServerLoading(false);
+          setServerStep("");
           return;
         }
 

@@ -106,6 +106,66 @@ function setCachedAuditEvents(key, events) {
 }
 
 /**
+ * POST /api/certificates/prepare-metamask-issue
+ * Hash and upload the PDF for a browser-wallet issue flow. The backend does
+ * not write to the contract here; MetaMask must send issueCertificate().
+ */
+exports.prepareMetaMaskIssue = async (req, res, next) => {
+  try {
+    const requestedCertId = normalizeCertId(req.body.certId);
+    const file = req.file;
+
+    if (!file || !file.buffer) {
+      return res.status(400).json({ success: false, error: "PDF file is required" });
+    }
+    if (!requestedCertId) {
+      return res.status(400).json({ success: false, error: "certId is required" });
+    }
+    if (!CERT_ID_PATTERN.test(requestedCertId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Certificate ID must be 3-80 chars and contain only letters, numbers, '.', '_', ':', or '-'",
+      });
+    }
+
+    const hexHash = await hashService.hashPDFBuffer(file.buffer);
+    const certHash = await hashService.hashToBytes32(hexHash);
+    const existing = await Certificate.findOne({
+      $or: [{ certHash }, { certId: requestedCertId }],
+    });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error:
+          existing.certHash === certHash
+            ? "A certificate with this file already exists"
+            : "A certificate with this ID already exists",
+        certId: existing.certId,
+      });
+    }
+
+    let uploaded;
+    try {
+      uploaded = await ipfsService.uploadPDFToIPFS(file.buffer, `${requestedCertId}.pdf`);
+    } catch (error) {
+      error.status = 503;
+      error.message = `IPFS service temporarily unavailable: ${error.message}`;
+      throw error;
+    }
+
+    return res.status(201).json({
+      success: true,
+      certId: requestedCertId,
+      certHash,
+      ipfsCID: uploaded.cid,
+      ipfsUrl: uploaded.url,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /api/certificates/issue
  */
 exports.issue = async (req, res, next) => {
@@ -638,6 +698,17 @@ exports.syncFromChain = async (req, res, next) => {
       typeof contract.getAddress === "function"
         ? await contract.getAddress()
         : String(contract.target || process.env.CONTRACT_ADDRESS || "");
+
+    if (
+      !receipt.to ||
+      (contractAddress &&
+        String(receipt.to).toLowerCase() !== String(contractAddress).toLowerCase())
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Transaction was not sent to the configured CertRegistry contract",
+      });
+    }
 
     let issuedEvent = null;
     for (const log of receipt.logs || []) {
