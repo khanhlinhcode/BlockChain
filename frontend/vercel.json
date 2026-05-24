@@ -1,22 +1,17 @@
 {
-  "framework": "nextjs",
-  "installCommand": "npm ci",
+  "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
+  "framework": "nextjs",
+  "regions": ["sin1"],
   "env": {
-    "NEXT_PUBLIC_API_URL": "@next_public_api_url",
-    "NEXT_PUBLIC_CONTRACT_ADDRESS": "@next_public_contract_address",
-    "NEXT_PUBLIC_CHAIN_ID": "@next_public_chain_id",
-    "NEXT_PUBLIC_IPFS_GATEWAY": "@next_public_ipfs_gateway"
-  },
-  "rewrites": [
-    {
-      "source": "/verify/:path*",
-      "destination": "/verify/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "https://YOUR_BACKEND_DOMAIN/api/:path*"
-    }
-  ]
+    "NEXT_PUBLIC_API_URL": "@certchain_api_url",
+    "NEXT_PUBLIC_CONTRACT_ADDRESS": "@certchain_contract_address",
+    "NEXT_PUBLIC_CHAIN_ID": "11155111",
+    "NEXT_PUBLIC_IPFS_GATEWAY": "https://gateway.pinata.cloud/ipfs",
+    "NEXT_PUBLIC_ALCHEMY_KEY": "@certchain_alchemy_key",
+    "NEXT_PUBLIC_SEPOLIA_RPC_URL": "@certchain_sepolia_rpc_url",
+    "NEXT_PUBLIC_FRONTEND_URL": "https://certchain-app.vercel.app",
+    "NEXT_PUBLIC_APP_URL": "https://certchain-app.vercel.app"
+  }
 }

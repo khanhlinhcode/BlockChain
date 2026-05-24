@@ -1,17 +1,26 @@
 # Environment files
 .env
 .env.*
+.env.production
 !.env.example
 !.env.local.example
+backend/.env
+frontend/.env.local
+smart-contract/.env
+*.env.production
 
 # Dependencies
 **/node_modules/
+node_modules/
 
 # Build outputs
 **/.next/
+.next/
 **/out/
 **/dist/
+dist/
 **/build/
+build/
 **/coverage/
 **/.turbo/
 **/.vercel/
@@ -25,6 +34,7 @@ smart-contract/deployments.json
 
 # Runtime artifacts
 **/uploads/
+uploads/
 **/tmp/
 **/temp/
 *.log

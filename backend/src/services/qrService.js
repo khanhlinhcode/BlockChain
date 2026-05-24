@@ -1,5 +1,6 @@
 const QRCode = require("qrcode");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const QR_DIR = path.join(__dirname, "../../uploads/qr");
@@ -10,8 +11,35 @@ function ensureQrDir() {
   }
 }
 
+function firstLanFrontendUrl() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return `http://${iface.address}:3000`;
+      }
+    }
+  }
+  return "";
+}
+
+function isLocalhostUrl(value) {
+  return /localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?/i.test(String(value || ""));
+}
+
 function normalizeBaseUrl(baseUrl) {
-  const value = String(baseUrl || process.env.FRONTEND_URL || "http://localhost:3000")
+  const prodUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || process.env.PUBLIC_FRONTEND_URL;
+  const frontendUrl = process.env.FRONTEND_URL;
+  const selected =
+    (prodUrl && !isLocalhostUrl(prodUrl) ? prodUrl : "") ||
+    (frontendUrl && !isLocalhostUrl(frontendUrl) ? frontendUrl : "") ||
+    (baseUrl && !isLocalhostUrl(baseUrl) ? baseUrl : "") ||
+    firstLanFrontendUrl() ||
+    baseUrl ||
+    frontendUrl ||
+    "http://localhost:3000";
+
+  const value = String(selected)
     .trim()
     .replace(/\/+$/, "");
   if (!value) {

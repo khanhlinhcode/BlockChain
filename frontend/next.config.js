@@ -18,10 +18,11 @@ function readLocalEnv(key) {
 /** @type {import('next').NextConfig} */
 const backendBaseUrl = (
   process.env.SERVER_API_URL ||
+  process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000/api"
 ).replace(/\/api\/?$/, "");
-const rpcBaseUrl = process.env.NEXT_PUBLIC_RPC_URL || "";
+const rpcBaseUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "";
 const frontendHost = (() => {
   try {
     return new URL(process.env.NEXT_PUBLIC_FRONTEND_URL || readLocalEnv("NEXT_PUBLIC_FRONTEND_URL") || "").hostname;
@@ -51,11 +52,13 @@ const nextConfig = {
     ],
   },
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_FRONTEND_URL: process.env.NEXT_PUBLIC_FRONTEND_URL || "",
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_FRONTEND_URL || "",
     NEXT_PUBLIC_CONTRACT_ADDRESS: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "",
     NEXT_PUBLIC_CHAIN_ID: process.env.NEXT_PUBLIC_CHAIN_ID || "11155111",
     NEXT_PUBLIC_RPC_URL: process.env.NEXT_PUBLIC_RPC_URL || "",
+    NEXT_PUBLIC_SEPOLIA_RPC_URL: process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "",
     NEXT_PUBLIC_ALCHEMY_KEY: process.env.NEXT_PUBLIC_ALCHEMY_KEY || "",
     NEXT_PUBLIC_IPFS_GATEWAY:
       process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs",
@@ -91,6 +94,18 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: [
+          {
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
           {
             key: "Content-Security-Policy",
             value: csp,

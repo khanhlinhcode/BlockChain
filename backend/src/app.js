@@ -7,6 +7,7 @@ const mongoose = require("mongoose");
 const path = require("path");
 const { version } = require("../package.json");
 const { apiLimiter } = require("./middleware/rateLimit");
+const config = require("./config");
 
 // ── Routes ──
 const authRoutes = require("./routes/auth");
@@ -18,6 +19,9 @@ const app = express();
 function resolveAllowedOrigins() {
   const configured = [
     process.env.FRONTEND_URL,
+    process.env.NEXT_PUBLIC_FRONTEND_URL,
+    config.frontend.url,
+    config.frontend.prodUrl,
     process.env.CORS_ALLOWED_ORIGINS,
   ]
     .filter(Boolean)
@@ -27,8 +31,10 @@ function resolveAllowedOrigins() {
 
   const defaults = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
-    "https://your-production-domain.com",
+    "http://127.0.0.1:3001",
+    "https://certchain-app.vercel.app",
   ];
   return Array.from(new Set([...configured, ...defaults]));
 }
@@ -56,10 +62,18 @@ const corsOptions = {
     if (!origin) {
       return callback(null, true);
     }
+    try {
+      const hostname = new URL(origin).hostname.toLowerCase();
+      if (hostname === "vercel.app" || hostname.endsWith(".vercel.app")) {
+        return callback(null, true);
+      }
+    } catch {
+      // Fall through to explicit allow-list checks.
+    }
     if (allowedOrigins.includes(origin) || isLocalDevOrigin(origin)) {
       return callback(null, true);
     }
-    const err = new Error("CORS origin not allowed");
+    const err = new Error("Not allowed by CORS");
     err.status = 403;
     return callback(err);
   },
@@ -103,17 +117,20 @@ app.use("/api/verify", verifyRoutes);
 
 // ── Health Check ──
 const healthHandler = (_req, res) => {
-  const contractAddress = process.env.CONTRACT_ADDRESS || null;
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    version,
-    chain: contractAddress,
+    version: process.env.npm_package_version || version || "1.0.0",
+    environment: config.nodeEnv,
+    chain: config.blockchain.contractAddress || "not configured",
+    network: "Ethereum Sepolia (11155111)",
   });
 };
 
 app.get("/health", healthHandler);
-app.get("/api/health", healthHandler);
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
 // ── 404 ──
 app.use((_req, res) => {
@@ -122,8 +139,8 @@ app.use((_req, res) => {
 
 // ── Global Error Handler ──
 app.use((err, _req, res, _next) => {
-  if (err.message === "CORS origin not allowed") {
-    return res.status(403).json({ success: false, error: "CORS origin not allowed" });
+  if (err.message === "CORS origin not allowed" || err.message === "Not allowed by CORS") {
+    return res.status(403).json({ success: false, error: "Not allowed by CORS" });
   }
 
   // Multer file-type / size errors
@@ -160,8 +177,8 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Start ──
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/certchain";
+const PORT = config.port;
+const MONGODB_URI = config.mongodb.uri || "mongodb://localhost:27017/certchain";
 
 async function connectDatabase(uri = MONGODB_URI) {
   if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
