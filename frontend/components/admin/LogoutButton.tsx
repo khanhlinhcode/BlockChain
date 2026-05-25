@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/context/LanguageContext";
+import { useMetaMaskContext } from "@/context/MetaMaskContext";
 
 type LogoutButtonProps = {
   compact?: boolean;
@@ -12,6 +13,7 @@ type LogoutButtonProps = {
 export default function LogoutButton({ compact = false, className = "" }: LogoutButtonProps) {
   const router = useRouter();
   const { t } = useLanguage();
+  const { disconnect } = useMetaMaskContext();
   const [loading, setLoading] = useState(false);
 
   const handleLogout = async () => {
@@ -31,6 +33,7 @@ export default function LogoutButton({ compact = false, className = "" }: Logout
       localStorage.removeItem("certchain_refresh_token");
       localStorage.removeItem("certchain_admin");
       localStorage.removeItem("certchain_wallet_connected");
+      disconnect();
       router.replace("/admin/login");
       setLoading(false);
     }

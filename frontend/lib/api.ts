@@ -542,6 +542,7 @@ export const certApi = {
       ...payload,
       certId,
       recipientName: asString(payload.recipientName, asString(formData.get("recipientName"))),
+      recipientEmail: asString(payload.recipientEmail, asString(formData.get("recipientEmail"))),
       courseName: asString(payload.courseName, asString(formData.get("courseName"))),
       issuingOrg: asString(payload.issuingOrg, asString(formData.get("issuingOrg"))),
       issuedAt: toIsoString(payload.issuedAt) || new Date().toISOString(),
@@ -616,8 +617,14 @@ export const certApi = {
     return { txHash: asString(payload.txHash) };
   },
 
-  async syncFromChain(txHash: string): Promise<Certificate> {
-    const response = await apiClient.post("/certificates/sync-from-chain", { txHash });
+  async syncFromChain(
+    txHash: string,
+    metadata: { recipientEmail?: string } = {}
+  ): Promise<Certificate> {
+    const response = await apiClient.post("/certificates/sync-from-chain", {
+      txHash,
+      ...metadata,
+    });
     const payload = extractResponseData<Record<string, unknown>>(response.data);
     const cert = isRecord(payload.certificate) ? payload.certificate : payload;
     return normalizeCertificate(cert);
@@ -709,7 +716,8 @@ export const api = {
 
   prepareMetaMaskIssue: (formData: FormData) => certApi.prepareMetaMaskIssue(formData),
 
-  syncCertificateFromChain: (txHash: string) => certApi.syncFromChain(txHash),
+  syncCertificateFromChain: (txHash: string, metadata?: { recipientEmail?: string }) =>
+    certApi.syncFromChain(txHash, metadata),
 
   getCertificates: async (
     page = 1,

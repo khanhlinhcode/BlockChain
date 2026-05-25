@@ -19,6 +19,11 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
   title: {
     default: "CertChain | Blockchain Certificate Verification",
     template: "%s | CertChain",

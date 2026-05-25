@@ -39,8 +39,8 @@ export default function AdminLoginPage() {
   const { t } = useLanguage();
   const [mode, setMode] = useState<LoginMode>("password");
   const [loading, setLoading] = useState(false);
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("Admin@123456");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -211,7 +211,7 @@ export default function AdminLoginPage() {
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
                     className="h-12 w-full rounded-xl bg-[var(--bg-input)] pl-10 pr-4 text-[15px]"
-                    placeholder="admin"
+                    placeholder="Nhập tên đăng nhập"
                     autoComplete="username"
                     disabled={loading}
                     required

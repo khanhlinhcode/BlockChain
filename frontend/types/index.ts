@@ -60,6 +60,7 @@ export interface VerifyResult {
 
 export interface IssueFormData {
   recipientName: string;
+  recipientEmail: string;
   courseName: string;
   issuingOrg: string;
   certId?: string;

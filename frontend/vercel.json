@@ -3,15 +3,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "regions": ["sin1"],
-  "env": {
-    "NEXT_PUBLIC_API_URL": "@certchain_api_url",
-    "NEXT_PUBLIC_CONTRACT_ADDRESS": "@certchain_contract_address",
-    "NEXT_PUBLIC_CHAIN_ID": "11155111",
-    "NEXT_PUBLIC_IPFS_GATEWAY": "https://gateway.pinata.cloud/ipfs",
-    "NEXT_PUBLIC_ALCHEMY_KEY": "@certchain_alchemy_key",
-    "NEXT_PUBLIC_SEPOLIA_RPC_URL": "@certchain_sepolia_rpc_url",
-    "NEXT_PUBLIC_FRONTEND_URL": "https://certchain-app.vercel.app",
-    "NEXT_PUBLIC_APP_URL": "https://certchain-app.vercel.app"
-  }
+  "regions": ["sin1"]
 }

@@ -36,6 +36,7 @@ import type { CertificateRecord } from "@/types";
 
 type FormValues = {
   recipientName: string;
+  recipientEmail: string;
   courseName: string;
   issuingOrg: string;
   certId?: string;
@@ -84,6 +85,7 @@ function buildDirectIssueRecord({
   ipfsCID,
   ipfsUrl,
   recipientName,
+  recipientEmail,
   courseName,
   issuingOrg,
   issuerAddress,
@@ -95,6 +97,7 @@ function buildDirectIssueRecord({
   ipfsCID: string;
   ipfsUrl: string;
   recipientName: string;
+  recipientEmail?: string;
   courseName: string;
   issuingOrg: string;
   issuerAddress: string;
@@ -110,6 +113,7 @@ function buildDirectIssueRecord({
     ipfsCID,
     ipfsUrl,
     recipientName,
+    recipientEmail,
     courseName,
     issuingOrg,
     issuerAddress,
@@ -148,6 +152,7 @@ export default function AdminIssuePage() {
     () =>
       z.object({
         recipientName: z.string().trim().min(2, t("validation.nameShort")).max(100, t("validation.nameLong")),
+        recipientEmail: z.string().trim().email(t("validation.invalidEmail")),
         courseName: z.string().trim().min(2, t("validation.courseShort")).max(200, t("validation.courseLong")),
         issuingOrg: z.string().trim().min(2, t("validation.orgShort")).max(200, t("validation.orgLong")),
         certId: z.string().trim().optional(),
@@ -159,6 +164,7 @@ export default function AdminIssuePage() {
     resolver: zodResolver(schema),
     defaultValues: {
       recipientName: "",
+      recipientEmail: "",
       courseName: "",
       issuingOrg: process.env.NEXT_PUBLIC_ISSUING_ORG || "CertChain",
       certId: generateCertId(),
@@ -212,7 +218,7 @@ export default function AdminIssuePage() {
   const progress = useMemo(() => (step / 3) * 100, [step]);
 
   const nextFromStepOne = async () => {
-    const valid = await form.trigger(["recipientName", "courseName", "issuingOrg", "certId"]);
+    const valid = await form.trigger(["recipientName", "recipientEmail", "courseName", "issuingOrg", "certId"]);
     if (!valid) return;
     if (!form.getValues("certId")?.trim()) {
       form.setValue("certId", generateCertId(), { shouldValidate: true });
@@ -269,6 +275,7 @@ export default function AdminIssuePage() {
         const uploadData = new FormData();
         uploadData.append("pdfFile", file);
         uploadData.append("certId", certId);
+        uploadData.append("recipientEmail", values.recipientEmail);
         const prepared = await api.prepareMetaMaskIssue(uploadData);
         if (!prepared.ipfsCID || !prepared.certHash) {
           throw new Error("IPFS preparation did not return certificate proof data.");
@@ -321,6 +328,7 @@ export default function AdminIssuePage() {
           ipfsCID: prepared.ipfsCID,
           ipfsUrl: prepared.ipfsUrl,
           recipientName: values.recipientName,
+          recipientEmail: values.recipientEmail,
           courseName: values.courseName,
           issuingOrg: values.issuingOrg,
           issuerAddress,
@@ -329,7 +337,9 @@ export default function AdminIssuePage() {
         });
 
         try {
-          issued = await api.syncCertificateFromChain(tx.hash);
+          issued = await api.syncCertificateFromChain(tx.hash, {
+            recipientEmail: values.recipientEmail,
+          });
         } catch (syncError: unknown) {
           toast.warning(t("issue.syncWarning"));
           issued = fallback;
@@ -342,6 +352,7 @@ export default function AdminIssuePage() {
         const formData = new FormData();
         formData.append("pdfFile", file);
         formData.append("recipientName", values.recipientName);
+        formData.append("recipientEmail", values.recipientEmail);
         formData.append("courseName", values.courseName);
         formData.append("issuingOrg", values.issuingOrg);
         formData.append("certId", certId);
@@ -405,6 +416,9 @@ export default function AdminIssuePage() {
               <SummaryItem label={t("common.certificateId")} value={result.certId} mono />
               <SummaryItem label={t("common.issuedDate")} value={formatDate(result.issuedAt, locale)} />
               <SummaryItem label={t("common.recipient")} value={result.recipientName} />
+              {result.recipientEmail ? (
+                <SummaryItem label={t("issue.recipientEmail")} value={result.recipientEmail} />
+              ) : null}
               <SummaryItem label={t("common.course")} value={result.courseName} />
               <SummaryItem label={t("common.organization")} value={result.issuingOrg} />
               <SummaryItem label={t("common.hash")} value={truncateHash(result.certHash, 10)} mono />
@@ -449,6 +463,7 @@ export default function AdminIssuePage() {
                   setWalletStatus(null);
                   form.reset({
                     recipientName: "",
+                    recipientEmail: "",
                     courseName: "",
                     issuingOrg: process.env.NEXT_PUBLIC_ISSUING_ORG || "CertChain",
                     certId: generateCertId(),
@@ -533,6 +548,18 @@ export default function AdminIssuePage() {
                   {...form.register("recipientName")}
                   className="h-12 w-full rounded-xl bg-[var(--bg-input)] px-4"
                   disabled={loading}
+                />
+              </InputField>
+
+              <InputField label={t("issue.recipientEmail")} error={form.formState.errors.recipientEmail?.message} full>
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  {...form.register("recipientEmail")}
+                  className="h-12 w-full rounded-xl bg-[var(--bg-input)] px-4"
+                  disabled={loading}
+                  placeholder="student@example.com"
                 />
               </InputField>
 
@@ -648,6 +675,7 @@ export default function AdminIssuePage() {
             <div className="mt-5 rounded-xl bg-[var(--bg-input)] p-5">
               <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                 <Summary label={t("common.recipient")} value={form.getValues("recipientName") || t("common.na")} />
+                <Summary label={t("issue.recipientEmail")} value={form.getValues("recipientEmail") || t("common.na")} />
                 <Summary label={t("common.course")} value={form.getValues("courseName") || t("common.na")} />
                 <Summary label={t("common.organization")} value={form.getValues("issuingOrg") || t("common.na")} />
                 <Summary label={t("common.certificateId")} value={form.getValues("certId") || t("common.na")} mono />
