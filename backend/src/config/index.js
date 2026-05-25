@@ -25,6 +25,11 @@ module.exports = {
     gateway: process.env.PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs",
   },
 
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY,
+    from: process.env.RESEND_FROM || "CertChain <onboarding@resend.dev>",
+  },
+
   frontend: {
     url: process.env.FRONTEND_URL || "http://localhost:3000",
     prodUrl: process.env.NEXT_PUBLIC_FRONTEND_URL || process.env.PUBLIC_FRONTEND_URL || "",

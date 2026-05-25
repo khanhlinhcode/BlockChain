@@ -3,6 +3,7 @@ const hashService = require("../services/hashService");
 const ipfsService = require("../services/ipfsService");
 const blockchainService = require("../services/blockchainService");
 const qrService = require("../services/qrService");
+const emailService = require("../services/emailService");
 
 function trimUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -56,6 +57,7 @@ function certificatePayload(cert, req) {
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const CERT_ID_PATTERN = /^[A-Z0-9][A-Z0-9._:-]{2,79}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ALLOWED_SORT_FIELDS = new Set(["issuedAt", "certId", "recipientName", "courseName", "createdAt"]);
 const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -73,10 +75,50 @@ function normalizeCertId(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function ipfsGatewayUrl(cid) {
   const gateway = (process.env.PINATA_GATEWAY || process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs")
     .replace(/\/+$/, "");
   return `${gateway}/${cid}`;
+}
+
+function queueCertificateEmail(cert, { req, qrCodeBase64 } = {}) {
+  const recipientEmail = normalizeEmail(cert?.recipientEmail);
+  if (!recipientEmail) return;
+
+  void (async () => {
+    try {
+      const certId = cert.certId;
+      const verifyUrl = cert.qrVerifyUrl || verifyUrlFor(certId, req);
+      const qrCode =
+        qrCodeBase64 ||
+        (await qrService.generateQRCode(certId, frontendBaseUrl(req))).base64;
+
+      const result = await emailService.sendCertificateEmail({
+        recipientEmail,
+        recipientName: cert.recipientName,
+        certId,
+        courseName: cert.courseName,
+        issuerName: cert.issuingOrg,
+        issuedDate: cert.issuedAt,
+        verifyUrl,
+        qrCodeBase64: qrCode,
+        pdfUrl: cert.ipfsUrl,
+        txHash: cert.txHash,
+        blockNumber: cert.blockNumber,
+        issuerAddress: cert.issuerAddress,
+      });
+
+      if (result?.skipped && result.reason === "resend_api_key_missing") {
+        console.warn(`Certificate email skipped for ${certId}: RESEND_API_KEY is not configured.`);
+      }
+    } catch (error) {
+      console.error(`Certificate email failed for ${cert?.certId || "unknown"}:`, error.message);
+    }
+  })();
 }
 
 function auditCacheKey({ eventType, from, to, limit }) {
@@ -171,6 +213,7 @@ exports.prepareMetaMaskIssue = async (req, res, next) => {
 exports.issue = async (req, res, next) => {
   try {
     const recipientName = normalizeText(req.body.recipientName);
+    const recipientEmail = normalizeEmail(req.body.recipientEmail);
     const courseName = normalizeText(req.body.courseName);
     const issuingOrg = normalizeText(req.body.issuingOrg);
     const requestedCertId = normalizeCertId(req.body.certId);
@@ -184,6 +227,9 @@ exports.issue = async (req, res, next) => {
         success: false,
         error: "recipientName, courseName, and issuingOrg are required",
       });
+    }
+    if (recipientEmail && !EMAIL_PATTERN.test(recipientEmail)) {
+      return res.status(400).json({ success: false, error: "recipientEmail must be a valid email address" });
     }
     if (requestedCertId && !CERT_ID_PATTERN.test(requestedCertId)) {
       return res.status(400).json({
@@ -279,6 +325,7 @@ exports.issue = async (req, res, next) => {
       ipfsCID: cid,
       ipfsUrl,
       recipientName,
+      recipientEmail,
       courseName,
       issuingOrg,
       issuerAddress: blockchainService.getSignerAddress(),
@@ -290,6 +337,7 @@ exports.issue = async (req, res, next) => {
     });
 
     const payload = certificatePayload(certificate, req);
+    queueCertificateEmail(certificate, { req, qrCodeBase64: qrResult.base64 });
 
     return res.status(201).json({
       success: true,
@@ -669,11 +717,15 @@ exports.audit = async (req, res, next) => {
 exports.syncFromChain = async (req, res, next) => {
   try {
     const txHash = String(req.body.txHash || "").trim();
+    const recipientEmail = normalizeEmail(req.body.recipientEmail);
     if (!TX_HASH_PATTERN.test(txHash)) {
       return res.status(400).json({
         success: false,
         error: "Valid txHash is required",
       });
+    }
+    if (recipientEmail && !EMAIL_PATTERN.test(recipientEmail)) {
+      return res.status(400).json({ success: false, error: "recipientEmail must be a valid email address" });
     }
 
     const provider = await blockchainService.getProvider();
@@ -745,6 +797,12 @@ exports.syncFromChain = async (req, res, next) => {
       $or: [{ certHash }, ...(eventCertId ? [{ certId: eventCertId }] : [])],
     });
     if (existing) {
+      if (recipientEmail && existing.recipientEmail !== recipientEmail) {
+        existing.recipientEmail = recipientEmail;
+        await existing.save();
+        queueCertificateEmail(existing, { req });
+      }
+
       return res.status(200).json({
         success: true,
         message: "Certificate already synced",
@@ -785,6 +843,7 @@ exports.syncFromChain = async (req, res, next) => {
       ipfsCID,
       ipfsUrl: ipfsGatewayUrl(ipfsCID),
       recipientName: normalizeText(onChainCert.recipientName),
+      recipientEmail,
       courseName: normalizeText(onChainCert.courseName),
       issuingOrg: normalizeText(onChainCert.issuingOrg),
       issuerAddress: String(onChainCert.issuer || issuedEvent.issuer || ""),
@@ -809,6 +868,8 @@ exports.syncFromChain = async (req, res, next) => {
       qrVerifyUrl: qrResult?.verifyUrl || verifyUrlFor(certId, req),
       verificationCount: 0,
     });
+
+    queueCertificateEmail(certificate, { req, qrCodeBase64: qrResult?.base64 });
 
     return res.status(201).json({
       success: true,

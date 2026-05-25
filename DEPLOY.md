@@ -52,6 +52,8 @@ JWT_REFRESH_EXPIRES_IN=7d
 PINATA_API_KEY=your_pinata_key
 PINATA_SECRET_KEY=your_pinata_secret
 PINATA_GATEWAY=https://gateway.pinata.cloud/ipfs
+RESEND_API_KEY=re_your_resend_api_key
+RESEND_FROM=CertChain <onboarding@resend.dev>
 ALCHEMY_URL=https://eth-sepolia.g.alchemy.com/v2/T0MLzImzKuTL5C7pVzAds
 CONTRACT_ADDRESS=0xAE5E724aeFf37F602B45CC63e85a7C07C46d1201
 ADMIN_PRIVATE_KEY=your_backend_admin_wallet_private_key
@@ -142,6 +144,21 @@ NEXT_PUBLIC_APP_URL=https://your-real-vercel-domain.vercel.app
 ```
 
 Sau đó redeploy cả backend và frontend.
+
+## STEP C.1 - Resend Email Notification
+
+1. Vào `https://resend.com` và tạo tài khoản.
+2. Dashboard -> API Keys -> Create API Key.
+3. Copy key dạng `re_xxx`.
+4. Thêm vào Railway backend environment:
+
+```env
+RESEND_API_KEY=re_xxx
+RESEND_FROM=CertChain <onboarding@resend.dev>
+```
+
+5. Với free tier và sender `onboarding@resend.dev`, Resend có thể giới hạn người nhận theo tài khoản/domain. Khi dùng production thật, hãy verify domain riêng rồi đổi `RESEND_FROM`.
+6. Email được gửi sau khi certificate issue/sync thành công. Nếu Resend lỗi, API cấp chứng chỉ vẫn trả thành công và backend chỉ log lỗi.
 
 ## STEP D - QR URL Production
 

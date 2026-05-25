@@ -28,6 +28,12 @@ const certificateSchema = new mongoose.Schema(
       index: true,
       trim: true,
     },
+    recipientEmail: {
+      type: String,
+      default: "",
+      trim: true,
+      lowercase: true,
+    },
     courseName: {
       type: String,
       required: true,
