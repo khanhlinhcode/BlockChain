@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+export const dynamic = "force-dynamic";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Filter, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import AdminSidebar from "@/components/admin/AdminSidebar";
@@ -51,7 +53,7 @@ export default function AdminAuditPage() {
     [action, admin, from, to, page]
   );
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       setLoading(true);
       const result = await api.getSecurityAuditLogs(query);
@@ -62,12 +64,12 @@ export default function AdminAuditPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [query, t]);
 
   useEffect(() => {
     document.title = `${t("audit.title")} | CertChain`;
     void loadLogs();
-  }, [query]);
+  }, [loadLogs, t]);
 
   const exportCsv = () => {
     const rows = [

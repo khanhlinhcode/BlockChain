@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { ethers } = require("ethers");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const Admin = require("../models/Admin");
 const AllowedWallet = require("../models/AllowedWallet");
 const {
@@ -11,14 +12,26 @@ const { logAudit } = require("../middleware/auditLogger");
 
 const signAccessToken = (admin) =>
   jwt.sign(
-    { id: admin._id, username: admin.username, role: admin.role, walletAddress: admin.walletAddress },
+    {
+      id: admin._id,
+      username: admin.username,
+      role: admin.role,
+      walletAddress: admin.walletAddress,
+      jti: crypto.randomUUID(),
+    },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || "8h" }
   );
 
 const signRefreshToken = (admin) =>
   jwt.sign(
-    { id: admin._id, username: admin.username, role: admin.role, walletAddress: admin.walletAddress },
+    {
+      id: admin._id,
+      username: admin.username,
+      role: admin.role,
+      walletAddress: admin.walletAddress,
+      jti: crypto.randomUUID(),
+    },
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d" }
   );
@@ -124,7 +137,7 @@ exports.loginMetaMask = async (req, res, next) => {
         role: "admin",
       });
       admin.passwordHash = await bcrypt.hash(
-        require("crypto").randomBytes(32).toString("hex"),
+        crypto.randomBytes(32).toString("hex"),
         12
       );
       await admin.save();

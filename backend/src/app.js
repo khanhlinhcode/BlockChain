@@ -17,6 +17,7 @@ const walletRoutes = require("./routes/walletRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
 
 const app = express();
+app.disable("x-powered-by");
 
 function resolveAllowedOrigins() {
   const configured = [

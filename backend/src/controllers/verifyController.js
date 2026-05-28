@@ -142,7 +142,7 @@ async function appendVerificationLog(cert, req) {
  */
 exports.verifyById = async (req, res, next) => {
   try {
-    const certId = String(req.body?.certId || "").trim().toUpperCase();
+    const certId = String(req.params?.certId || req.body?.certId || "").trim().toUpperCase();
     if (!certId) return res.status(400).json({ success: false, error: "certId is required" });
     if (!CERT_ID_LOOKUP_PATTERN.test(certId)) {
       return res.status(400).json({ success: false, error: "Invalid certId format" });

@@ -4,7 +4,9 @@ function decodePayload(token: string): { exp?: number; role?: string } | null {
   try {
     const [, payload] = token.split(".");
     if (!payload) return null;
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    const json = atob(padded);
     return JSON.parse(json);
   } catch {
     return null;
@@ -30,11 +32,13 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  if (pathname.startsWith("/admin/wallets") && payload.role !== "superadmin") {
+  if ((pathname.startsWith("/admin/wallets") || pathname.startsWith("/admin/audit")) && payload.role !== "superadmin") {
     return NextResponse.redirect(new URL("/admin/dashboard", request.url));
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return response;
 }
 
 export const config = {

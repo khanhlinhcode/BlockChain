@@ -70,12 +70,22 @@ function clearExpiryTimer() {
 
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
   if (!isBrowser()) return;
-  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Strict`;
 }
 
 function deleteCookie(name: string) {
   if (!isBrowser()) return;
-  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Strict`;
+}
+
+function getCookie(name: string): string | null {
+  if (!isBrowser()) return null;
+  const cookie = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  if (!cookie) return null;
+  return decodeURIComponent(cookie.slice(name.length + 1));
 }
 
 export function redirectToLogin() {
@@ -143,7 +153,7 @@ export function setRefreshToken(refreshToken: string) {
 
 export function getStoredToken(): string | null {
   if (!isBrowser()) return null;
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getCookie(TOKEN_COOKIE) || localStorage.getItem(TOKEN_KEY);
   if (!token) return null;
 
   if (isTokenExpired(token)) {
@@ -171,6 +181,10 @@ export function getAuthToken(): string | null {
 
   return null;
 }
+
+// Backward-compatible aliases for older components/tests.
+export const saveToken = setAuthToken;
+export const removeToken = clearAuthSession;
 
 export function getStoredAdmin<T = unknown>(): T | null {
   if (!isBrowser()) return null;

@@ -10,5 +10,6 @@ router.post("/by-id", verify.verifyById);
 router.post("/by-file", ...uploadPdfField, handleUploadError, verify.verifyByFile);
 router.post("/by-hash", verify.verifyByHash);
 router.get("/:certId/history", verify.getHistory);
+router.get("/:certId", verify.verifyById);
 
 module.exports = router;

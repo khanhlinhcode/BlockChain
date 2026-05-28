@@ -48,7 +48,7 @@ const apiLimiter = buildLimiter({
 
 const authLimiter = buildLimiter({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: process.env.NODE_ENV === "test" ? 100 : 10,
   message: "Too many authentication requests. Please try again later.",
   code: "AUTH_RATE_LIMITED",
 });

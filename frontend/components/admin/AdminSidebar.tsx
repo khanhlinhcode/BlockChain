@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   { href: "/admin/dashboard", labelKey: "admin.dashboard", icon: BarChart3 },
   { href: "/admin/issue", labelKey: "admin.issueCertificate", icon: FilePlus2 },
   { href: "/admin/certificates", labelKey: "admin.certificates", icon: FileCheck2 },
-  { href: "/admin/audit", labelKey: "admin.auditLog", icon: ScrollText },
+  { href: "/admin/audit", labelKey: "admin.auditLog", icon: ScrollText, superadminOnly: true },
   { href: "/admin/wallets", labelKey: "admin.walletWhitelist", icon: ShieldCheck, superadminOnly: true },
 ];
 
