@@ -1,321 +1,191 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Filter, RefreshCw } from "lucide-react";
-import useSWR from "swr";
+import { useEffect, useMemo, useState } from "react";
+import { Download, Filter, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import AdminSidebar from "@/components/admin/AdminSidebar";
 import { api } from "@/lib/api";
-import { CHAIN_ID, SUPPORTED_CHAINS } from "@/lib/constants";
-import { formatAddress, formatDate, truncateHash } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
+import { getFriendlyError } from "@/lib/errorMessages";
 import { localeForLanguage } from "@/lib/i18n";
 import { useLanguage } from "@/context/LanguageContext";
-import AdminSidebar from "@/components/admin/AdminSidebar";
-import type { AuditEventFilters, AuditEventItem, AuditEventType } from "@/types";
+import type { SecurityAuditLog } from "@/types";
 
-type EventFilterValue = "all" | AuditEventType;
+const ACTIONS = [
+  "all",
+  "LOGIN",
+  "LOGIN_METAMASK",
+  "LOGOUT",
+  "ISSUE_CERT",
+  "REVOKE_CERT",
+  "ADD_WALLET",
+  "UPDATE_WALLET",
+  "DELETE_WALLET",
+];
 
-function eventTypeLabel(type: AuditEventType): string {
-  if (type === "issued") return "CertIssued";
-  if (type === "revoked") return "CertRevoked";
-  return "CertVerified";
-}
-
-function eventTypeClass(type: AuditEventType): string {
-  if (type === "issued") return "badge-valid";
-  if (type === "revoked") return "badge-revoked";
-  return "badge-pending";
-}
-
-function useAuditEvents(filters: AuditEventFilters) {
-  return useSWR(
-    ["audit-events", filters.eventType || "all", filters.from || "", filters.to || "", filters.limit || 100] as const,
-    async () => api.getAuditEvents(filters),
-    {
-      dedupingInterval: 15_000,
-      keepPreviousData: true,
-      revalidateOnFocus: false,
-    }
-  );
+function csvEscape(value: unknown) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
 export default function AdminAuditPage() {
   const { language, t } = useLanguage();
   const locale = localeForLanguage(language);
-  const [eventType, setEventType] = useState<EventFilterValue>("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [logs, setLogs] = useState<SecurityAuditLog[]>([]);
+  const [action, setAction] = useState("all");
+  const [admin, setAdmin] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
 
-  const filters = useMemo<AuditEventFilters>(
+  const query = useMemo(
     () => ({
-      eventType,
-      from: fromDate || undefined,
-      to: toDate || undefined,
-      limit: 200,
+      action: action === "all" ? undefined : action,
+      admin: admin || undefined,
+      from: from || undefined,
+      to: to || undefined,
+      page,
+      limit: 25,
     }),
-    [eventType, fromDate, toDate]
+    [action, admin, from, to, page]
   );
 
-  const { data, isLoading, isValidating, error, mutate } = useAuditEvents(filters);
-  const events = data || [];
-  const explorerBase = SUPPORTED_CHAINS[CHAIN_ID]?.explorer || "";
+  const loadLogs = async () => {
+    try {
+      setLoading(true);
+      const result = await api.getSecurityAuditLogs(query);
+      setLogs(result.data);
+      setTotalPages(result.totalPages);
+    } catch (error) {
+      toast.error(getFriendlyError(error, t("audit.loadFailed")));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    document.title = `${t("audit.title")} | CertChain`;
+    void loadLogs();
+  }, [query]);
+
+  const exportCsv = () => {
+    const rows = [
+      ["Action", "Admin", "IP", "Status", "Time", "Details"],
+      ...logs.map((log) => [
+        log.action,
+        log.adminUsername || "",
+        log.ip || "",
+        log.status,
+        log.createdAt,
+        JSON.stringify(log.details || {}),
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `certchain-audit-${Date.now()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="page-bg min-h-screen pb-20 md:pb-8">
       <AdminSidebar />
       <main className="space-y-6 px-4 py-8 md:ml-60 md:px-8">
-      <div>
-        <h1 className="page-title">{t("audit.title")}</h1>
-        <p className="page-subtitle mt-2">
-          {t("audit.subtitle")}
-        </p>
-      </div>
-
-      <section className="glass-card p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-          <div className="relative lg:col-span-4">
-            <Filter
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-            />
-            <select
-              value={eventType}
-              onChange={(event) => setEventType(event.target.value as EventFilterValue)}
-              className="input-dark w-full px-9 py-2.5 text-[15px]"
-            >
-              <option value="all">{t("audit.allTypes")}</option>
-              <option value="issued">CertIssued</option>
-              <option value="revoked">CertRevoked</option>
-              <option value="verified">CertVerified</option>
-            </select>
-          </div>
-          <div className="lg:col-span-3">
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="input-dark w-full px-3 py-2.5 text-[15px]"
-              aria-label={t("common.fromDate")}
-            />
-          </div>
-          <div className="lg:col-span-3">
-            <input
-              type="date"
-              value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-              className="input-dark w-full px-3 py-2.5 text-[15px]"
-              aria-label={t("common.toDate")}
-            />
-          </div>
-          <div className="flex items-center gap-2 lg:col-span-2">
-            <button
-              type="button"
-              onClick={() => void mutate()}
-              disabled={isValidating}
-              className="btn-ghost inline-flex items-center gap-2 px-3 py-2 text-[15px]"
-            >
-              <RefreshCw size={14} className={isValidating ? "animate-spin" : ""} />
-              {t("common.refresh")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEventType("all");
-                setFromDate("");
-                setToDate("");
-              }}
-              className="btn-ghost inline-flex items-center gap-2 px-3 py-2 text-[15px]"
-            >
-              {t("common.reset")}
-            </button>
-          </div>
+        <div>
+          <h1 className="page-title">{t("audit.title")}</h1>
+          <p className="page-subtitle mt-2">
+            Security events for login, logout, certificate issuance, revocation, and wallet changes.
+          </p>
         </div>
-      </section>
 
-      {error ? (
-        <div className="rounded-lg border border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.1)] px-4 py-3 text-[15px] text-[var(--accent-red)]">
-          {(error as Error).message || t("audit.loadFailed")}
-        </div>
-      ) : null}
+        <section className="glass-card p-4 sm:p-5">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="relative lg:col-span-3">
+              <Filter size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <select value={action} onChange={(event) => { setAction(event.target.value); setPage(1); }} className="input-dark w-full px-9 py-2.5 text-[15px]">
+                {ACTIONS.map((item) => (
+                  <option key={item} value={item}>{item === "all" ? "All actions" : item}</option>
+                ))}
+              </select>
+            </div>
+            <input value={admin} onChange={(event) => { setAdmin(event.target.value); setPage(1); }} placeholder="Admin username" className="input-dark px-3 py-2.5 text-[15px] lg:col-span-3" />
+            <input type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} className="input-dark px-3 py-2.5 text-[15px] lg:col-span-2" />
+            <input type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} className="input-dark px-3 py-2.5 text-[15px] lg:col-span-2" />
+            <div className="flex gap-2 lg:col-span-2">
+              <button type="button" onClick={() => void loadLogs()} className="btn-ghost inline-flex items-center gap-2 px-3 py-2 text-[15px]">
+                <RefreshCw size={14} />
+                {t("common.refresh")}
+              </button>
+              <button type="button" onClick={exportCsv} className="btn-ghost inline-flex items-center gap-2 px-3 py-2 text-[15px]">
+                <Download size={14} />
+                CSV
+              </button>
+            </div>
+          </div>
+        </section>
 
-      <section className="glass-card overflow-hidden">
-        <div className="hidden overflow-x-auto md:block">
-          <table className="readable-table w-full min-w-[920px]">
-            <thead className="bg-[rgba(255,255,255,0.03)]">
-              <tr>
-                <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">
-                  {t("audit.eventType")}
-                </th>
-                <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">
-                  {t("common.certificateId")}
-                </th>
-                <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">
-                  {t("audit.actor")}
-                </th>
-                <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">
-                  {t("audit.timestamp")}
-                </th>
-                <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">
-                  {t("audit.tx")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && !events.length ? (
-                <AuditTableSkeleton />
-              ) : events.length ? (
-                events.map((event) => (
-                  <AuditTableRow key={`${event.txHash}-${event.eventType}`} event={event} explorerBase={explorerBase} locale={locale} t={t} />
-                ))
-              ) : (
+        <section className="glass-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="readable-table w-full min-w-[980px]">
+              <thead className="bg-[rgba(255,255,255,0.03)]">
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-[16px] text-[var(--text-secondary)]">
-                    {t("audit.noEventsFilters")}
-                  </td>
+                  <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">Action</th>
+                  <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">Admin</th>
+                  <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">IP</th>
+                  <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">Status</th>
+                  <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">Time</th>
+                  <th className="px-4 py-3 text-left uppercase text-[var(--text-muted)]">Details</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="space-y-3 p-4 md:hidden">
-          {isLoading && !events.length ? (
-            <AuditCardSkeleton />
-          ) : events.length ? (
-            events.map((event) => (
-              <motion.article
-                key={`${event.txHash}-${event.blockNumber}`}
-                className="rounded-lg border border-[var(--border)] p-3"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${eventTypeClass(event.eventType)}`}>
-                    {eventTypeLabel(event.eventType)}
-                  </span>
-                  <span className="text-xs text-[var(--text-muted)]">#{event.blockNumber}</span>
-                </div>
-                <p className="text-[13px] font-medium text-[var(--text-muted)]">{t("common.certificateId")}</p>
-                <p className="font-mono text-sm text-[var(--text-primary)]">{event.certId || t("common.unknown")}</p>
-                <p className="mt-2 text-[13px] font-medium text-[var(--text-muted)]">{t("audit.actor")}</p>
-                <p className="font-mono text-sm text-[var(--text-secondary)]">{formatAddress(event.actor)}</p>
-                <p className="mt-2 text-[13px] font-medium text-[var(--text-muted)]">{t("audit.timestamp")}</p>
-                <p className="text-sm text-[var(--text-secondary)]">{formatDate(event.timestamp, locale)}</p>
-                <p className="mt-2 text-[13px] font-medium text-[var(--text-muted)]">{t("audit.transaction")}</p>
-                {explorerBase && event.txHash ? (
-                  <a
-                    href={`${explorerBase}/tx/${event.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-sm text-[var(--accent-teal)] hover:underline"
-                  >
-                    {truncateHash(event.txHash, 10)}
-                  </a>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-[var(--text-secondary)]">
+                      <Loader2 className="mx-auto animate-spin" />
+                    </td>
+                  </tr>
+                ) : logs.length ? (
+                  logs.map((log) => (
+                    <tr key={log._id} className="border-t border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)]">
+                      <td className="px-4 py-3 font-mono text-[14px] text-[var(--teal)]">{log.action}</td>
+                      <td className="px-4 py-3 text-[14px] text-[var(--text-primary)]">{log.adminUsername || "system"}</td>
+                      <td className="px-4 py-3 font-mono text-[13px] text-[var(--text-secondary)]">{log.ip || "-"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${log.status === "success" ? "badge-valid" : "badge-revoked"}`}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[14px] text-[var(--text-secondary)]">{formatDate(log.createdAt, locale)}</td>
+                      <td className="max-w-[360px] truncate px-4 py-3 font-mono text-[12px] text-[var(--text-muted)]">
+                        {JSON.stringify(log.details || {})}
+                      </td>
+                    </tr>
+                  ))
                 ) : (
-                  <span className="font-mono text-sm text-[var(--text-secondary)]">
-                    {truncateHash(event.txHash, 10)}
-                  </span>
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-[var(--text-secondary)]">
+                      No audit events found.
+                    </td>
+                  </tr>
                 )}
-              </motion.article>
-            ))
-          ) : (
-            <p className="py-10 text-center text-sm text-[var(--text-secondary)]">
-              {t("audit.noEvents")}
-            </p>
-          )}
-        </div>
-      </section>
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="btn-ghost px-3 py-2 disabled:opacity-40">
+              Previous
+            </button>
+            <span>Page {page} / {totalPages}</span>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} className="btn-ghost px-3 py-2 disabled:opacity-40">
+              Next
+            </button>
+          </div>
+        </section>
       </main>
     </div>
-  );
-}
-
-function AuditTableRow({
-  event,
-  explorerBase,
-  locale,
-  t,
-}: {
-  event: AuditEventItem;
-  explorerBase: string;
-  locale: string;
-  t: (key: string, params?: Record<string, string | number>) => string;
-}) {
-  return (
-    <tr className="border-t border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)]">
-      <td className="px-4 py-3">
-        <span className={`status-badge inline-flex rounded-full px-2.5 py-1 font-medium ${eventTypeClass(event.eventType)}`}>
-          {eventTypeLabel(event.eventType)}
-        </span>
-      </td>
-      <td className="px-4 py-3 font-mono text-[14px] text-[var(--text-primary)]">{event.certId || t("common.unknown")}</td>
-      <td className="px-4 py-3 font-mono text-[14px] text-[var(--text-secondary)]">{formatAddress(event.actor)}</td>
-      <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{formatDate(event.timestamp, locale)}</td>
-      <td className="px-4 py-3">
-        {explorerBase && event.txHash ? (
-          <a
-            href={`${explorerBase}/tx/${event.txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-[14px] text-[var(--accent-teal)] hover:underline"
-          >
-            {truncateHash(event.txHash, 12)}
-          </a>
-        ) : (
-          <span className="font-mono text-[14px] text-[var(--text-secondary)]">{truncateHash(event.txHash, 12)}</span>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-function AuditTableSkeleton() {
-  const rowIds = [
-    "audit-skeleton-1",
-    "audit-skeleton-2",
-    "audit-skeleton-3",
-    "audit-skeleton-4",
-    "audit-skeleton-5",
-    "audit-skeleton-6",
-    "audit-skeleton-7",
-  ];
-
-  return (
-    <>
-      {rowIds.map((rowId) => (
-        <tr key={rowId} className="border-t border-[var(--border)]">
-          <td className="px-4 py-3">
-            <div className="skeleton h-6 w-24" />
-          </td>
-          <td className="px-4 py-3">
-            <div className="skeleton h-4 w-44" />
-          </td>
-          <td className="px-4 py-3">
-            <div className="skeleton h-4 w-32" />
-          </td>
-          <td className="px-4 py-3">
-            <div className="skeleton h-4 w-28" />
-          </td>
-          <td className="px-4 py-3">
-            <div className="skeleton h-4 w-36" />
-          </td>
-        </tr>
-      ))}
-    </>
-  );
-}
-
-function AuditCardSkeleton() {
-  const cardIds = ["audit-card-1", "audit-card-2", "audit-card-3"];
-  return (
-    <>
-      {cardIds.map((cardId) => (
-        <div key={cardId} className="rounded-lg border border-[var(--border)] p-3">
-          <div className="skeleton h-5 w-28" />
-          <div className="mt-3 skeleton h-4 w-44" />
-          <div className="mt-2 skeleton h-4 w-36" />
-          <div className="mt-2 skeleton h-4 w-28" />
-        </div>
-      ))}
-    </>
   );
 }

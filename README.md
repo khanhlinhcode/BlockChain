@@ -7,6 +7,7 @@ CertChain là hệ thống cấp, quản trị và xác thực chứng chỉ b�
 ![alt text](image-3.png)
 ![alt text](image-4.png)
 ![alt text](image-6.png)
+![alt text](image-8.png)
 
 ## Thành Phần Chính
 

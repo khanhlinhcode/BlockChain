@@ -9,6 +9,7 @@ import {
   ScrollText,
   Loader2,
   Wallet,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { href: "/admin/issue", labelKey: "admin.issueCertificate", icon: FilePlus2 },
   { href: "/admin/certificates", labelKey: "admin.certificates", icon: FileCheck2 },
   { href: "/admin/audit", labelKey: "admin.auditLog", icon: ScrollText },
+  { href: "/admin/wallets", labelKey: "admin.walletWhitelist", icon: ShieldCheck, superadminOnly: true },
 ];
 
 export default function AdminSidebar() {
@@ -42,6 +44,8 @@ export default function AdminSidebar() {
   const chainName = SUPPORTED_CHAINS[chainId || CHAIN_ID]?.name || t("common.unknown");
   const hasWallet = Boolean(account);
   const hasLinkedWallet = Boolean(linkedWalletAddress);
+  const admin = getStoredAdmin<AdminUser>();
+  const isSuperadmin = admin?.role === "superadmin";
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +100,7 @@ export default function AdminSidebar() {
       <p className="mt-6 text-xs font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">{t("admin.mainMenu")}</p>
 
       <nav className="mt-3 space-y-1">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !item.superadminOnly || isSuperadmin).map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
           return (

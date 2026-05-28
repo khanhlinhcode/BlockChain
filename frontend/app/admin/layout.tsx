@@ -18,7 +18,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     pathname === "/admin/dashboard" ||
     pathname === "/admin/issue" ||
     pathname === "/admin/certificates" ||
-    pathname === "/admin/audit";
+    pathname === "/admin/audit" ||
+    pathname === "/admin/wallets";
   const [authorized, setAuthorized] = useState(isLoginPage);
 
   useEffect(() => {

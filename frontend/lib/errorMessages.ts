@@ -11,6 +11,7 @@ type ErrorMessageKey =
   | "forbidden"
   | "notFound"
   | "rateLimited"
+  | "loginLocked"
   | "serverError"
   | "unavailable"
   | "duplicate"
@@ -31,6 +32,7 @@ const messages: Record<"en" | "vi", Record<ErrorMessageKey, string>> = {
     forbidden: "You do not have permission to perform this action.",
     notFound: "The requested resource was not found.",
     rateLimited: "Too many requests. Please wait a moment and try again.",
+    loginLocked: "Too many failed login attempts. Please wait 30 minutes and try again.",
     serverError: "Server error. Please try again in a few minutes.",
     unavailable: "Service is temporarily unavailable. Please try again shortly.",
     duplicate: "A certificate with this ID or document hash already exists. Please use different data.",
@@ -50,6 +52,7 @@ const messages: Record<"en" | "vi", Record<ErrorMessageKey, string>> = {
     forbidden: "Bạn không có quyền thực hiện thao tác này.",
     notFound: "Không tìm thấy tài nguyên được yêu cầu.",
     rateLimited: "Quá nhiều yêu cầu. Vui lòng chờ một chút rồi thử lại.",
+    loginLocked: "Đăng nhập sai quá nhiều lần. Vui lòng chờ 30 phút rồi thử lại.",
     serverError: "Lỗi máy chủ. Vui lòng thử lại sau vài phút.",
     unavailable: "Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.",
     duplicate: "Đã tồn tại chứng chỉ với mã hoặc hash tài liệu này. Vui lòng dùng dữ liệu khác.",
@@ -90,6 +93,7 @@ function getStatusMessage(status?: number): string | null {
   if (status === 403) return msg("forbidden");
   if (status === 404) return msg("notFound");
   if (status === 429) return msg("rateLimited");
+  if (status === 423) return msg("loginLocked");
   if (status === 500) return msg("serverError");
   if (status === 503) return msg("unavailable");
   return null;

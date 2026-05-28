@@ -1,18 +1,20 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const helmet = require("helmet");
 const morgan = require("morgan");
 const mongoose = require("mongoose");
 const path = require("path");
 const { version } = require("../package.json");
 const { apiLimiter } = require("./middleware/rateLimit");
+const { applySecurityMiddleware } = require("./middleware/security");
 const config = require("./config");
 
 // ── Routes ──
 const authRoutes = require("./routes/auth");
 const certRoutes = require("./routes/certificates");
 const verifyRoutes = require("./routes/verify");
+const walletRoutes = require("./routes/walletRoutes");
+const auditLogRoutes = require("./routes/auditLogRoutes");
 
 const app = express();
 
@@ -83,14 +85,14 @@ const corsOptions = {
 };
 
 // ── Security & Parsing ──
-app.use(helmet());
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 if (process.env.NODE_ENV !== "test" && process.env.JEST_WORKER_ID === undefined) {
   app.use(morgan("dev"));
 }
 app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+applySecurityMiddleware(app);
 
 // Dynamic API data changes after blockchain transactions and MongoDB writes.
 // Disable conditional GET/ETag caching so admin tables never render stale 304
@@ -112,6 +114,8 @@ app.use("/api", apiLimiter);
 
 // ── API Routes ──
 app.use("/api/auth", authRoutes);
+app.use("/api/admin/wallets", walletRoutes);
+app.use("/api/admin/audit", auditLogRoutes);
 app.use("/api/certificates", certRoutes);
 app.use("/api/verify", verifyRoutes);
 
@@ -140,17 +144,17 @@ app.use((_req, res) => {
 // ── Global Error Handler ──
 app.use((err, _req, res, _next) => {
   if (err.message === "CORS origin not allowed" || err.message === "Not allowed by CORS") {
-    return res.status(403).json({ success: false, error: "Not allowed by CORS" });
+    return res.status(403).json({ success: false, error: "Not allowed by CORS", code: "CORS_BLOCKED" });
   }
 
   // Multer file-type / size errors
   if (err.message === "Only PDF files are allowed") {
-    return res.status(400).json({ success: false, error: err.message });
+    return res.status(400).json({ success: false, error: err.message, code: "INVALID_FILE_TYPE" });
   }
   if (err.code === "LIMIT_FILE_SIZE") {
     return res
       .status(400)
-      .json({ success: false, error: "File too large. Maximum 10MB allowed." });
+      .json({ success: false, error: "File too large. Maximum 10MB allowed.", code: "FILE_TOO_LARGE" });
   }
 
   const isDatabaseUnavailable =
@@ -173,6 +177,7 @@ app.use((err, _req, res, _next) => {
           ? "Service temporarily unavailable"
           : "Internal server error"
         : err.message,
+    code: err.code || (isServiceUnavailable ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR"),
   });
 });
 

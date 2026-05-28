@@ -2,11 +2,12 @@ const jwt = require("jsonwebtoken");
 const { ethers } = require("ethers");
 const bcrypt = require("bcryptjs");
 const Admin = require("../models/Admin");
-const blockchainService = require("../services/blockchainService");
+const AllowedWallet = require("../models/AllowedWallet");
 const {
   blacklistToken,
   isTokenBlacklisted,
 } = require("../services/tokenBlacklistService");
+const { logAudit } = require("../middleware/auditLogger");
 
 const signAccessToken = (admin) =>
   jwt.sign(
@@ -97,41 +98,42 @@ exports.loginMetaMask = async (req, res, next) => {
         .json({ success: false, error: "Signature verification failed" });
     }
 
+    const allowedWallet = await AllowedWallet.findOne({
+      address: normalizedWallet,
+      isActive: true,
+    });
+    if (!allowedWallet) {
+      return res.status(403).json({
+        success: false,
+        error: "Wallet is not allowed to access CertChain admin",
+        code: "WALLET_NOT_ALLOWED",
+      });
+    }
+
     // Check if wallet is a registered admin
     let admin = await Admin.findOne({
       walletAddress: normalizedWallet,
       isActive: true,
     });
 
-    // Fallback: check if wallet is an admin on-chain
+    // Backward-compatible: create an admin profile only after whitelist approval.
     if (!admin) {
-      try {
-        const isOnChainAdmin = await blockchainService.isAdminOnChain(normalizedWallet);
-        if (!isOnChainAdmin) {
-          return res
-            .status(403)
-            .json({ success: false, error: "Wallet is not a registered admin" });
-        }
-        // Auto-create admin record for on-chain admin
-        admin = new Admin({
-          username: `wallet_${normalizedWallet.slice(2, 10).toLowerCase()}`,
-          walletAddress: normalizedWallet,
-          role: "admin",
-        });
-        admin.passwordHash = await bcrypt.hash(
-          require("crypto").randomBytes(32).toString("hex"),
-          12
-        );
-        await admin.save();
-      } catch {
-        return res
-          .status(403)
-          .json({ success: false, error: "Wallet is not a registered admin" });
-      }
+      admin = new Admin({
+        username: `wallet_${normalizedWallet.slice(2, 10).toLowerCase()}`,
+        walletAddress: normalizedWallet,
+        role: "admin",
+      });
+      admin.passwordHash = await bcrypt.hash(
+        require("crypto").randomBytes(32).toString("hex"),
+        12
+      );
+      await admin.save();
     }
 
     admin.lastLogin = new Date();
     await admin.save();
+    allowedWallet.lastLoginAt = new Date();
+    await allowedWallet.save();
 
     return res.json({ success: true, ...issueSession(admin) });
   } catch (err) {
@@ -203,18 +205,21 @@ exports.linkWallet = async (req, res, next) => {
  * POST /api/auth/logout
  * Invalidate active access/refresh tokens via in-memory blacklist.
  */
-exports.logout = async (req, res) => {
+exports.logout = async (req, res, next) => {
   const accessToken = req.token;
   const refreshToken = req.body?.refreshToken;
 
-  if (accessToken) {
-    blacklistToken(accessToken);
+  try {
+    if (accessToken) {
+      await blacklistToken(accessToken, "logout");
+    }
+    if (refreshToken) {
+      await blacklistToken(refreshToken, "logout");
+    }
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (error) {
+    next(error);
   }
-  if (refreshToken) {
-    blacklistToken(refreshToken);
-  }
-
-  res.json({ success: true, message: "Logged out successfully" });
 };
 
 /**
@@ -227,10 +232,10 @@ exports.refresh = async (req, res, next) => {
     if (!refreshToken) {
       return res.status(400).json({ success: false, error: "refreshToken is required" });
     }
-    if (isTokenBlacklisted(refreshToken)) {
+    if (await isTokenBlacklisted(refreshToken)) {
       return res
         .status(401)
-        .json({ success: false, error: "Refresh token has been revoked" });
+        .json({ success: false, error: "Refresh token has been revoked", code: "TOKEN_REVOKED" });
     }
 
     const decoded = jwt.verify(
@@ -245,7 +250,7 @@ exports.refresh = async (req, res, next) => {
         .json({ success: false, error: "Admin not found or deactivated" });
     }
 
-    blacklistToken(refreshToken);
+    await blacklistToken(refreshToken, "refresh_rotation");
     return res.json({ success: true, ...issueSession(admin) });
   } catch (err) {
     if (err.name === "TokenExpiredError") {
@@ -305,11 +310,60 @@ exports.seed = async (_req, res, next) => {
       username,
       role: "superadmin",
     });
+    const defaultWallet = String(
+      process.env.DEFAULT_SUPERADMIN_WALLET ||
+        process.env.DEFAULT_ADMIN_WALLET ||
+        process.env.ADMIN_WALLET_ADDRESS ||
+        ""
+    ).trim();
+    let normalizedWallet = "";
+    if (defaultWallet) {
+      try {
+        normalizedWallet = ethers.getAddress(defaultWallet).toLowerCase();
+        admin.walletAddress = normalizedWallet;
+      } catch {
+        normalizedWallet = "";
+      }
+    }
     admin.passwordHash = await bcrypt.hash(
       process.env.DEFAULT_ADMIN_PASSWORD || "Admin@123456",
       12
     );
     await admin.save();
+
+    const extraWallets = String(process.env.DEFAULT_ALLOWED_WALLETS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const walletsToSeed = Array.from(new Set([normalizedWallet, ...extraWallets].filter(Boolean)));
+
+    for (const wallet of walletsToSeed) {
+      try {
+        const address = ethers.getAddress(wallet).toLowerCase();
+        // eslint-disable-next-line no-await-in-loop
+        await AllowedWallet.updateOne(
+          { address },
+          {
+            $setOnInsert: {
+              address,
+              addedBy: admin._id,
+              label: address === normalizedWallet ? "Default superadmin wallet" : "Seeded admin wallet",
+              isActive: true,
+            },
+          },
+          { upsert: true }
+        );
+      } catch {
+        // Ignore invalid optional seed wallet values.
+      }
+    }
+
+    await logAudit({
+      action: "ADD_WALLET",
+      req: _req,
+      admin,
+      details: { seededWalletCount: walletsToSeed.length },
+    });
 
     res.status(201).json({
       success: true,

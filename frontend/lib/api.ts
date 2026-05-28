@@ -11,6 +11,8 @@ import type {
   Certificate,
   DashboardStats,
   PaginatedResponse,
+  AllowedWallet,
+  SecurityAuditLog,
   VerifyResult,
 } from "@/types";
 import {
@@ -170,6 +172,34 @@ function normalizeAdmin(raw: unknown): AdminUser {
     username,
     role: value.role === "superadmin" ? "superadmin" : "admin",
     walletAddress,
+  };
+}
+
+function normalizeAllowedWallet(raw: unknown): AllowedWallet {
+  const value = isRecord(raw) ? raw : {};
+  return {
+    _id: asString(value._id, asString(value.id, asString(value.address))),
+    address: asString(value.address),
+    label: asOptionalString(value.label),
+    isActive: value.isActive !== false,
+    lastLoginAt: toIsoString(value.lastLoginAt),
+    createdAt: toIsoString(value.createdAt),
+    updatedAt: toIsoString(value.updatedAt),
+  };
+}
+
+function normalizeSecurityAuditLog(raw: unknown): SecurityAuditLog {
+  const value = isRecord(raw) ? raw : {};
+  return {
+    _id: asString(value._id, asString(value.id)),
+    action: asString(value.action),
+    adminId: asOptionalString(value.adminId),
+    adminUsername: asOptionalString(value.adminUsername),
+    ip: asOptionalString(value.ip),
+    userAgent: asOptionalString(value.userAgent),
+    details: isRecord(value.details) ? value.details : undefined,
+    status: value.status === "failure" ? "failure" : "success",
+    createdAt: toIsoString(value.createdAt) || new Date().toISOString(),
   };
 }
 
@@ -694,6 +724,53 @@ export const auditApi = {
   },
 };
 
+export const walletApi = {
+  async list(): Promise<AllowedWallet[]> {
+    const response = await apiClient.get("/admin/wallets");
+    const payload = extractResponseData<Record<string, unknown>>(response.data);
+    const rows = Array.isArray(payload.wallets) ? payload.wallets : [];
+    return rows.map((row) => normalizeAllowedWallet(row));
+  },
+
+  async create(data: { address: string; label?: string }): Promise<AllowedWallet> {
+    const response = await apiClient.post("/admin/wallets", data);
+    const payload = extractResponseData<Record<string, unknown>>(response.data);
+    return normalizeAllowedWallet(payload.wallet);
+  },
+
+  async update(id: string, data: { isActive?: boolean; label?: string }): Promise<AllowedWallet> {
+    const response = await apiClient.patch(`/admin/wallets/${encodeURIComponent(id)}`, data);
+    const payload = extractResponseData<Record<string, unknown>>(response.data);
+    return normalizeAllowedWallet(payload.wallet);
+  },
+
+  async remove(id: string): Promise<void> {
+    await apiClient.delete(`/admin/wallets/${encodeURIComponent(id)}`);
+  },
+};
+
+export const securityAuditApi = {
+  async list(params: {
+    action?: string;
+    admin?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<PaginatedResponse<SecurityAuditLog>> {
+    const response = await apiClient.get("/admin/audit", { params });
+    const payload = extractResponseData<Record<string, unknown>>(response.data);
+    const logs = Array.isArray(payload.logs) ? payload.logs.map(normalizeSecurityAuditLog) : [];
+    return {
+      data: logs,
+      total: asNumber(payload.total, logs.length),
+      page: asNumber(payload.page, params.page || 1),
+      totalPages: asNumber(payload.totalPages, 1),
+      limit: asNumber(payload.limit, params.limit || 50),
+    };
+  },
+};
+
 // Backward-compatible API wrapper used by existing pages/components.
 export const api = {
   login: (username: string, password: string) =>
@@ -711,6 +788,19 @@ export const api = {
   },
 
   getMe: () => authApi.getMe(),
+  getAllowedWallets: () => walletApi.list(),
+  addAllowedWallet: (data: { address: string; label?: string }) => walletApi.create(data),
+  updateAllowedWallet: (id: string, data: { isActive?: boolean; label?: string }) =>
+    walletApi.update(id, data),
+  deleteAllowedWallet: (id: string) => walletApi.remove(id),
+  getSecurityAuditLogs: (params?: {
+    action?: string;
+    admin?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  }) => securityAuditApi.list(params),
 
   issueCertificate: (formData: FormData) => certApi.issue(formData),
 

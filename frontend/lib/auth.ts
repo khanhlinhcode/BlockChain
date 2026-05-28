@@ -1,6 +1,8 @@
 const TOKEN_KEY = "certchain_token";
 const REFRESH_TOKEN_KEY = "certchain_refresh_token";
 const ADMIN_KEY = "certchain_admin";
+const TOKEN_COOKIE = "certchain_token";
+const ROLE_COOKIE = "certchain_role";
 
 interface JwtPayload {
   exp?: number;
@@ -66,6 +68,16 @@ function clearExpiryTimer() {
   }
 }
 
+function setCookie(name: string, value: string, maxAgeSeconds: number) {
+  if (!isBrowser()) return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+}
+
+function deleteCookie(name: string) {
+  if (!isBrowser()) return;
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
 export function redirectToLogin() {
   if (!isBrowser()) return;
   if (window.location.pathname !== "/admin/login") {
@@ -79,6 +91,8 @@ export function clearAuthSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(ADMIN_KEY);
+  deleteCookie(TOKEN_COOKIE);
+  deleteCookie(ROLE_COOKIE);
 }
 
 export function scheduleTokenExpiryLogout() {
@@ -102,6 +116,11 @@ export function saveAuthSession(token: string, admin: unknown, refreshToken?: st
   if (!isBrowser()) return;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(ADMIN_KEY, JSON.stringify(admin));
+  const expiryMs = getTokenExpiryMs(token);
+  const maxAge = expiryMs ? Math.max(1, Math.floor((expiryMs - Date.now()) / 1000)) : 8 * 60 * 60;
+  setCookie(TOKEN_COOKIE, token, maxAge);
+  const role = typeof admin === "object" && admin !== null && "role" in admin ? String((admin as { role?: unknown }).role || "") : "";
+  if (role) setCookie(ROLE_COOKIE, role, maxAge);
   if (refreshToken) {
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   }
@@ -111,6 +130,9 @@ export function saveAuthSession(token: string, admin: unknown, refreshToken?: st
 export function setAuthToken(token: string) {
   if (!isBrowser()) return;
   localStorage.setItem(TOKEN_KEY, token);
+  const expiryMs = getTokenExpiryMs(token);
+  const maxAge = expiryMs ? Math.max(1, Math.floor((expiryMs - Date.now()) / 1000)) : 8 * 60 * 60;
+  setCookie(TOKEN_COOKIE, token, maxAge);
   scheduleTokenExpiryLogout();
 }
 

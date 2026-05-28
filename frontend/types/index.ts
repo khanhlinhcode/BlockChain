@@ -74,6 +74,28 @@ export interface AdminUser {
   walletAddress?: string;
 }
 
+export interface AllowedWallet {
+  _id: string;
+  address: string;
+  label?: string;
+  isActive: boolean;
+  lastLoginAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SecurityAuditLog {
+  _id: string;
+  action: string;
+  adminId?: string;
+  adminUsername?: string;
+  ip?: string;
+  userAgent?: string;
+  details?: Record<string, unknown>;
+  status: "success" | "failure";
+  createdAt: string;
+}
+
 export interface DashboardStats {
   total: number;
   valid: number;
