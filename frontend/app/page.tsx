@@ -49,34 +49,34 @@ export default function HomePage() {
     <main className="page-bg">
       <Navbar />
 
-      <section id="verify-section" className="mx-auto grid min-h-screen w-full max-w-7xl items-center gap-10 px-4 pb-16 pt-28 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:pt-24">
+      <section id="verify-section" className="home-hero mx-auto grid min-h-screen w-full max-w-7xl items-center gap-10 px-4 pb-16 pt-28 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:pt-24">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="max-w-2xl"
+          className="home-hero-copy max-w-2xl"
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--teal-border)] bg-[var(--teal-glow)] px-4 py-2">
+          <div className="home-hero-badge inline-flex items-center gap-2 rounded-full border border-[var(--teal-border)] bg-[var(--teal-glow)] px-4 py-2">
             <ShieldCheck size={15} className="text-[var(--teal)]" />
             <span className="eyebrow">{t("home.badge")}</span>
           </div>
 
-          <h1 className="mt-7 text-5xl font-extrabold leading-[1.04] text-[var(--text-primary)] sm:text-6xl lg:text-7xl">
+          <h1 className="home-hero-title mt-7 text-5xl font-extrabold leading-[1.04] text-[var(--text-primary)] sm:text-6xl lg:text-7xl">
             {t("home.titleLine1")}
             <span className="gradient-text block">{t("home.titleLine2")}</span>
           </h1>
 
-          <p className="mt-6 max-w-xl text-lg leading-8 text-[var(--text-secondary)]">
+          <p className="home-hero-subtitle mt-6 max-w-xl text-lg leading-8 text-[var(--text-secondary)]">
             {t("home.subtitle")}
           </p>
 
-          <div className="mt-9 grid max-w-xl grid-cols-3 gap-3.5">
+          <div className="home-signals mt-9 grid max-w-xl grid-cols-3 gap-3.5">
             <Signal value="10k+" label={t("home.statIssued")} />
             <Signal value="100%" label={t("home.statHashLocked")} />
             <Signal value="<2s" label={t("home.statLookup")} />
           </div>
 
-          <div className="mt-9 flex flex-wrap gap-3.5">
+          <div className="home-actions mt-9 flex flex-wrap gap-3.5">
             <Link href="/#verify-card" className="btn-primary inline-flex items-center gap-2 px-6 py-3.5 text-[16px]">
               {t("home.verifyNow")}
               <ArrowRight size={18} />
@@ -147,11 +147,11 @@ export default function HomePage() {
 
 function Signal({ value, label }: { value: string; label: string }) {
   return (
-    <div className="surface-panel px-4 py-[18px] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--teal-border)] sm:px-5">
-      <p className="gradient-text font-display text-[28px] font-extrabold leading-none tracking-[-0.01em] sm:text-[32px]">
+    <div className="home-signal surface-panel px-4 py-[18px] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--teal-border)] sm:px-5">
+      <p className="home-signal-value gradient-text font-display text-[28px] font-extrabold leading-none tracking-[-0.01em] sm:text-[32px]">
         {value}
       </p>
-      <p className="mt-2.5 text-[14px] font-semibold leading-5 text-[var(--text-secondary)] sm:text-[15px]">{label}</p>
+      <p className="home-signal-label mt-2.5 text-[14px] font-semibold leading-5 text-[var(--text-secondary)] sm:text-[15px]">{label}</p>
     </div>
   );
 }
