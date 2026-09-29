@@ -183,6 +183,32 @@ export function MetaMaskProvider({ children }: { children: ReactNode }) {
         await syncState(accounts, { forceAccount: true });
         return connected;
       } catch (err: unknown) {
+        const errorCode =
+          typeof err === "object" && err !== null && "code" in err
+            ? (err as { code?: unknown }).code
+            : undefined;
+
+        if (errorCode === -32002) {
+          // MetaMask already has a permissions request open for this origin.
+          // If access was granted in the meantime, recover from eth_accounts
+          // instead of issuing another permissions request.
+          const existingAccounts = (await ethereum.request({
+            method: "eth_accounts",
+          })) as string[];
+
+          const connected = existingAccounts?.[0];
+          if (connected) {
+            markWalletSession(true);
+            await syncState(existingAccounts, { forceAccount: true });
+            return connected;
+          }
+
+          const message =
+            "MetaMask already has a connection request waiting. Open MetaMask and approve or reject that request before trying again.";
+          setError(message);
+          throw new Error(message);
+        }
+
         const message = getFriendlyError(err, t("metamask.connectFailed"));
         setError(message);
         throw new Error(message);
