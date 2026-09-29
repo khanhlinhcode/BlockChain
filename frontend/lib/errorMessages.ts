@@ -23,6 +23,7 @@ type ErrorMessageKey =
   | "reverted"
   | "invalidSignature"
   | "certificateNotFound"
+  | "walletRequestPending"
   | "fallback";
 
 const messages: Record<"en" | "vi", Record<ErrorMessageKey, string>> = {
@@ -43,6 +44,7 @@ const messages: Record<"en" | "vi", Record<ErrorMessageKey, string>> = {
     reverted: "Blockchain transaction failed. Please review the request data and try again.",
     invalidSignature: "Wallet signature is invalid. Please sign again in MetaMask.",
     certificateNotFound: "Certificate not found. Please check the certificate ID or upload the original file.",
+    walletRequestPending: "MetaMask already has a connection request waiting. Open MetaMask and approve or reject it before trying again.",
     fallback: "Something went wrong. Please try again.",
   },
   vi: {
@@ -62,6 +64,7 @@ const messages: Record<"en" | "vi", Record<ErrorMessageKey, string>> = {
     reverted: "Giao dịch blockchain thất bại. Vui lòng kiểm tra dữ liệu và thử lại.",
     invalidSignature: "Chữ ký ví không hợp lệ. Vui lòng ký lại trong MetaMask.",
     certificateNotFound: "Không tìm thấy chứng chỉ. Vui lòng kiểm tra mã hoặc tải file gốc lên.",
+    walletRequestPending: "MetaMask đang có một yêu cầu kết nối chờ xử lý. Hãy mở MetaMask và chấp nhận hoặc từ chối yêu cầu đó trước khi thử lại.",
     fallback: "Đã xảy ra lỗi. Vui lòng thử lại.",
   },
 };
@@ -185,6 +188,10 @@ export function getFriendlyError(error: unknown, fallback = msg("fallback")): st
 
     if (errorLike.code === 4001 || errorLike.code === "ACTION_REJECTED") {
       return msg("rejected");
+    }
+
+    if (errorLike.code === -32002) {
+      return msg("walletRequestPending");
     }
 
     const message = errorLike.message || "";
