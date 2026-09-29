@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -142,35 +143,63 @@ export function MetaMaskProvider({ children }: { children: ReactNode }) {
     [disconnect, t]
   );
 
-  const connectWallet = useCallback(async () => {
-    const ethereum = getEthereum();
-    if (!ethereum) {
-      const message = t("metamask.notInstalled");
-      setError(message);
-      throw new Error(message);
+  const connectRequestRef = useRef<Promise<string> | null>(null);
+
+  const connectWallet = useCallback((): Promise<string> => {
+    if (connectRequestRef.current) {
+      return connectRequestRef.current;
     }
 
-    setIsConnecting(true);
-    setError(null);
-
-    try {
-      const accounts = (await ethereum.request({
-        method: "eth_requestAccounts",
-      })) as string[];
-      const connected = accounts?.[0];
-      if (!connected) {
-        throw new Error(t("metamask.noAccount"));
+    const request = (async () => {
+      const ethereum = getEthereum();
+      if (!ethereum) {
+        const message = t("metamask.notInstalled");
+        setError(message);
+        throw new Error(message);
       }
-      markWalletSession(true);
-      await syncState(accounts, { forceAccount: true });
-      return connected;
-    } catch (err: unknown) {
-      const message = getFriendlyError(err, t("metamask.connectFailed"));
-      setError(message);
-      throw new Error(message);
-    } finally {
-      setIsConnecting(false);
-    }
+
+      setIsConnecting(true);
+      setError(null);
+
+      try {
+        // Reuse an already-authorized account before asking MetaMask for
+        // permissions again. This avoids duplicate permission prompts.
+        const existingAccounts = (await ethereum.request({
+          method: "eth_accounts",
+        })) as string[];
+
+        const accounts = existingAccounts.length
+          ? existingAccounts
+          : ((await ethereum.request({
+              method: "eth_requestAccounts",
+            })) as string[]);
+
+        const connected = accounts?.[0];
+        if (!connected) {
+          throw new Error(t("metamask.noAccount"));
+        }
+
+        markWalletSession(true);
+        await syncState(accounts, { forceAccount: true });
+        return connected;
+      } catch (err: unknown) {
+        const message = getFriendlyError(err, t("metamask.connectFailed"));
+        setError(message);
+        throw new Error(message);
+      } finally {
+        setIsConnecting(false);
+      }
+    })();
+
+    connectRequestRef.current = request;
+
+    void request.finally(() => {
+      if (connectRequestRef.current === request) {
+        connectRequestRef.current = null;
+      }
+    });
+
+    return request;
   }, [syncState, t]);
 
   const connect = useCallback(async () => {
