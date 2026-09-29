@@ -276,7 +276,9 @@ export default function AdminLoginPage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => void connectWallet()}
+                  onClick={() => {
+                    void connectWallet().catch(() => undefined);
+                  }}
                   disabled={isConnecting || loading}
                   className="btn-outline inline-flex h-12 w-full items-center justify-center gap-2 text-sm"
                 >
