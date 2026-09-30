@@ -74,10 +74,10 @@
   --bg-card: #ffffff;
   --bg-card-hover: #f1f6fb;
   --bg-input: #f8fbfe;
-  --teal: #008da3;
-  --teal-glow: rgba(0, 141, 163, 0.11);
-  --teal-border: rgba(0, 141, 163, 0.24);
-  --button-primary-bg: #00798a;
+  --teal: #00798a;
+  --teal-glow: rgba(0, 121, 138, 0.11);
+  --teal-border: rgba(0, 121, 138, 0.24);
+  --button-primary-bg: var(--teal);
   --button-primary-fg: #ffffff;
   --button-primary-hover: #006f80;
   --green: #008f68;
