@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CertResult from "@/components/CertResult";
+import { mergeBackendMetadata } from "@/hooks/useVerify";
 import type { VerifyResponse } from "@/types";
 
 jest.mock("@/context/LanguageContext", () => ({
@@ -99,6 +100,34 @@ test("VALID state shows truncated hash and copy button", () => {
   render(<CertResult result={makeResult()} />);
   expect(screen.getByText("0xaaaaaaaaaa...aaaaaaaaaa")).toBeInTheDocument();
   expect(screen.getAllByText("Copy").length).toBeGreaterThan(0);
+});
+
+test("does not present block zero as a real blockchain height", () => {
+  render(
+    <CertResult
+      result={makeResult({
+        certificate: { ...baseCertificate, blockNumber: 0 },
+      })}
+    />
+  );
+  expect(screen.getByText("Block #N/A")).toBeInTheDocument();
+});
+
+test("keeps blockchain authority while enriching trusted backend metadata", () => {
+  const direct = makeResult({
+    source: "blockchain",
+    certificate: { ...baseCertificate, blockNumber: 0, revokeReason: undefined },
+  });
+  const backend = makeResult({
+    source: "backend",
+    certificate: { ...baseCertificate, blockNumber: 42, revokeReason: "Issued in error" },
+  });
+
+  const merged = mergeBackendMetadata(direct, backend);
+
+  expect(merged.source).toBe("blockchain");
+  expect(merged.certificate?.blockNumber).toBe(42);
+  expect(merged.certificate?.revokeReason).toBe("Issued in error");
 });
 
 test("REVOKED state shows red state and revocation details", () => {

@@ -85,8 +85,9 @@ export default function CertResult({
   const verificationTime = result?.verifiedAt || cert?.lastVerifiedAt || new Date().toISOString();
   const directBlockchain = result?.source === "blockchain";
   const chainName = SUPPORTED_CHAINS[CHAIN_ID]?.name || "Ethereum Sepolia";
-  const explorer = SUPPORTED_CHAINS[CHAIN_ID]?.explorer || "https://sepolia.etherscan.io";
+  const explorer = SUPPORTED_CHAINS[CHAIN_ID]?.explorer ?? "";
   const contractExplorerUrl = explorer && CONTRACT_ADDRESS ? `${explorer}/address/${CONTRACT_ADDRESS}` : "";
+  const blockNumber = cert?.blockNumber && cert.blockNumber > 0 ? cert.blockNumber : null;
 
   const verificationLink = useMemo(() => {
     if (typeof window === "undefined" || !certId || certId === "N/A") return "";
@@ -328,7 +329,7 @@ export default function CertResult({
                   {copiedField === "hash" ? <Check size={13} /> : <Copy size={13} />}
                   {copiedField === "hash" ? t("common.copied") : t("common.copy")}
                 </button>
-                {cert?.txHash ? (
+                {cert?.txHash && explorer ? (
                   <a
                     href={`${explorer}/tx/${cert.txHash}`}
                     target="_blank"
@@ -407,7 +408,7 @@ export default function CertResult({
         <div className="mt-6 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
           <span>{t("result.verifiedAgo", { time: formatDateRelative(verificationTime, language) })}</span>
           <span>
-            {t("result.block", { block: typeof cert?.blockNumber === "number" ? cert.blockNumber.toLocaleString(locale) : t("common.na") })}
+            {t("result.block", { block: blockNumber ? blockNumber.toLocaleString(locale) : t("common.na") })}
           </span>
         </div>
 

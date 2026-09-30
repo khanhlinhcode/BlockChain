@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import VerifyByIdContent from "@/components/verification/VerifyByIdContent";
 import { verifyApi } from "@/lib/api";
 import { getFriendlyError } from "@/lib/errorMessages";
-import { useVerify } from "@/hooks/useVerify";
+import { mergeBackendMetadata, useVerify } from "@/hooks/useVerify";
 import { useLanguage } from "@/context/LanguageContext";
 import type { VerifyResponse } from "@/types";
 
@@ -76,10 +76,9 @@ export default function VerifyByIdPage() {
           setHasCompletedLookup(true);
           setServerLoading(false);
           setServerStep("");
-          return;
+        } else {
+          setServerStep(t("verify.chainNotFound"));
         }
-
-        setServerStep(t("verify.chainNotFound"));
       } catch {
         if (cancelled) return;
         setServerStep(t("verify.chainUnavailable"));
@@ -97,7 +96,11 @@ export default function VerifyByIdPage() {
         if (cancelled) return;
 
         if (data.exists) {
-          setServerResult({ ...data, source: data.source || "backend" });
+          setServerResult(
+            chainData?.exists
+              ? mergeBackendMetadata({ ...chainData, source: "blockchain" }, data)
+              : { ...data, source: data.source || "backend" }
+          );
         } else {
           setServerResult(chainData || { ...data, source: "backend" });
         }

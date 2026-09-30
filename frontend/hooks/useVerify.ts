@@ -118,6 +118,46 @@ function buildResult(cert: ContractCertificate, fallbackHash = ""): VerifyResult
   };
 }
 
+export function mergeBackendMetadata(direct: VerifyResult, backend: VerifyResult): VerifyResult {
+  const directCert = direct.certificate;
+  const backendCert = backend.certificate;
+
+  if (!directCert || !backendCert) return direct;
+  if (directCert.certId.toUpperCase() !== backendCert.certId.toUpperCase()) return direct;
+  if (directCert.certHash.toLowerCase() !== backendCert.certHash.toLowerCase()) return direct;
+
+  return {
+    ...direct,
+    verifiedAt: backend.verifiedAt || direct.verifiedAt,
+    certificate: {
+      ...directCert,
+      ipfsUrl: backendCert.ipfsUrl || directCert.ipfsUrl,
+      qrCodeUrl: backendCert.qrCodeUrl || directCert.qrCodeUrl,
+      qrVerifyUrl: backendCert.qrVerifyUrl || directCert.qrVerifyUrl,
+      txHash: backendCert.txHash || directCert.txHash,
+      blockNumber: backendCert.blockNumber || directCert.blockNumber,
+      revokeReason: backendCert.revokeReason || directCert.revokeReason,
+      revokeTxHash: backendCert.revokeTxHash || directCert.revokeTxHash,
+      revokeBlockNumber: backendCert.revokeBlockNumber || directCert.revokeBlockNumber,
+      verificationCount: backendCert.verificationCount,
+      lastVerifiedAt: backendCert.lastVerifiedAt || directCert.lastVerifiedAt,
+    },
+    source: "blockchain",
+  };
+}
+
+async function enrichDirectResult(
+  direct: VerifyResult,
+  getBackendResult: () => Promise<VerifyResult>
+): Promise<VerifyResult> {
+  try {
+    const backend = await getBackendResult();
+    return mergeBackendMetadata(direct, backend);
+  } catch {
+    return direct;
+  }
+}
+
 export function normalizeDirectVerifyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err || "");
   const lower = msg.toLowerCase();
@@ -201,8 +241,11 @@ export function useVerify() {
           return data;
         }
 
-        setResult(data);
-        return data;
+        const enriched = shouldFallbackToBackend
+          ? await enrichDirectResult(data, () => verifyByIdWithBackendFallback(normalizedId))
+          : data;
+        setResult(enriched);
+        return enriched;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err || "");
         if (shouldFallbackToBackend) {
@@ -257,8 +300,9 @@ export function useVerify() {
           return fallback;
         }
 
-        setResult(data);
-        return data;
+        const enriched = await enrichDirectResult(data, () => verifyByFileWithBackendFallback(file));
+        setResult(enriched);
+        return enriched;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err || "");
         try {
