@@ -4,34 +4,38 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const Admin = require("../models/Admin");
 const AllowedWallet = require("../models/AllowedWallet");
+const WalletChallenge = require("../models/WalletChallenge");
 const {
   blacklistToken,
   isTokenBlacklisted,
 } = require("../services/tokenBlacklistService");
 const { logAudit } = require("../middleware/auditLogger");
+const { isWalletAllowed } = require("../services/walletAuthorizationService");
 
-const signAccessToken = (admin) =>
+const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const AUTH_METHODS = new Set(["password", "wallet"]);
+
+function tokenClaims(admin, authMethod) {
+  return {
+    id: admin._id,
+    username: admin.username,
+    role: admin.role,
+    walletAddress: admin.walletAddress,
+    authMethod,
+    jti: crypto.randomUUID(),
+  };
+}
+
+const signAccessToken = (admin, authMethod) =>
   jwt.sign(
-    {
-      id: admin._id,
-      username: admin.username,
-      role: admin.role,
-      walletAddress: admin.walletAddress,
-      jti: crypto.randomUUID(),
-    },
+    tokenClaims(admin, authMethod),
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || "8h" }
   );
 
-const signRefreshToken = (admin) =>
+const signRefreshToken = (admin, authMethod) =>
   jwt.sign(
-    {
-      id: admin._id,
-      username: admin.username,
-      role: admin.role,
-      walletAddress: admin.walletAddress,
-      jti: crypto.randomUUID(),
-    },
+    tokenClaims(admin, authMethod),
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d" }
   );
@@ -45,11 +49,138 @@ function sanitizeAdmin(admin) {
   };
 }
 
-function issueSession(admin) {
-  const token = signAccessToken(admin);
-  const refreshToken = signRefreshToken(admin);
+function issueSession(admin, authMethod) {
+  const token = signAccessToken(admin, authMethod);
+  const refreshToken = signRefreshToken(admin, authMethod);
   return { token, refreshToken, admin: sanitizeAdmin(admin) };
 }
+
+function normalizeWalletAddress(walletAddress) {
+  return ethers.getAddress(String(walletAddress || "").trim()).toLowerCase();
+}
+
+function challengeContext() {
+  const configuredUrl =
+    process.env.PUBLIC_FRONTEND_URL ||
+    process.env.NEXT_PUBLIC_FRONTEND_URL ||
+    process.env.FRONTEND_URL ||
+    "http://localhost:3000";
+  try {
+    const url = new URL(configuredUrl);
+    return { domain: url.host, uri: url.origin };
+  } catch {
+    return { domain: "localhost:3000", uri: "http://localhost:3000" };
+  }
+}
+
+function challengeMessage({ walletAddress, purpose, nonce, issuedAt, expiresAt }) {
+  const { domain, uri } = challengeContext();
+  const action = purpose === "login" ? "Sign in to CertChain Admin." : "Link this wallet to CertChain Admin.";
+  const chainId = String(process.env.CHAIN_ID || "11155111");
+  return [
+    `${domain} wants you to sign in with your Ethereum account:`,
+    walletAddress,
+    "",
+    action,
+    "",
+    `URI: ${uri}`,
+    "Version: 1",
+    `Chain ID: ${chainId}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt.toISOString()}`,
+    `Expiration Time: ${expiresAt.toISOString()}`,
+  ].join("\n");
+}
+
+function hashChallengeMessage(message) {
+  return crypto.createHash("sha256").update(message).digest("hex");
+}
+
+async function createWalletChallenge({ walletAddress, purpose, adminId = null }) {
+  const normalizedWallet = normalizeWalletAddress(walletAddress);
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + WALLET_CHALLENGE_TTL_MS);
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const message = challengeMessage({
+    walletAddress: normalizedWallet,
+    purpose,
+    nonce,
+    issuedAt,
+    expiresAt,
+  });
+  const challenge = await WalletChallenge.create({
+    walletAddress: normalizedWallet,
+    purpose,
+    adminId,
+    messageHash: hashChallengeMessage(message),
+    expiresAt,
+  });
+  return { challengeId: challenge._id.toString(), message, expiresAt };
+}
+
+async function consumeWalletChallenge({ challengeId, walletAddress, purpose, message, signature, adminId = null }) {
+  const normalizedWallet = normalizeWalletAddress(walletAddress);
+  const now = new Date();
+  const query = {
+    _id: challengeId,
+    walletAddress: normalizedWallet,
+    purpose,
+    adminId,
+    messageHash: hashChallengeMessage(message),
+    consumedAt: null,
+    expiresAt: { $gt: now },
+  };
+  const challenge = await WalletChallenge.findOne(query);
+  if (!challenge) return false;
+
+  let recoveredAddress;
+  try {
+    recoveredAddress = ethers.verifyMessage(message, signature).toLowerCase();
+  } catch {
+    return false;
+  }
+  if (recoveredAddress !== normalizedWallet) return false;
+
+  const consumed = await WalletChallenge.findOneAndUpdate(
+    query,
+    { $set: { consumedAt: now } },
+    { new: true }
+  );
+  return Boolean(consumed);
+}
+
+exports.createMetaMaskLoginChallenge = async (req, res, next) => {
+  try {
+    const normalizedWallet = normalizeWalletAddress(req.body.walletAddress);
+    if (!(await isWalletAllowed(normalizedWallet))) {
+      return res.status(403).json({
+        success: false,
+        error: "Wallet is not allowed to access CertChain admin",
+        code: "WALLET_NOT_ALLOWED",
+      });
+    }
+    const challenge = await createWalletChallenge({
+      walletAddress: normalizedWallet,
+      purpose: "login",
+    });
+    return res.status(201).json({ success: true, ...challenge });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.createLinkWalletChallenge = async (req, res, next) => {
+  try {
+    const challenge = await createWalletChallenge({
+      walletAddress: req.body.walletAddress,
+      purpose: "link",
+      adminId: req.admin.id,
+    });
+    return res.status(201).json({ success: true, ...challenge });
+  } catch (err) {
+    return next(err);
+  }
+};
 
 /**
  * POST /api/auth/login
@@ -75,7 +206,7 @@ exports.login = async (req, res, next) => {
     admin.lastLogin = new Date();
     await admin.save();
 
-    return res.json({ success: true, ...issueSession(admin) });
+    return res.json({ success: true, ...issueSession(admin, "password") });
   } catch (err) {
     next(err);
   }
@@ -87,7 +218,7 @@ exports.login = async (req, res, next) => {
  */
 exports.loginMetaMask = async (req, res, next) => {
   try {
-    const { signature, message } = req.body;
+    const { challengeId, signature, message } = req.body;
     const walletAddress = String(req.body?.walletAddress || "").trim();
     if (!walletAddress || !signature || !message) {
       return res.status(400).json({
@@ -103,12 +234,17 @@ exports.loginMetaMask = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Invalid wallet address" });
     }
 
-    // Verify signature
-    const recoveredAddress = ethers.verifyMessage(message, signature);
-    if (recoveredAddress.toLowerCase() !== normalizedWallet) {
+    const challengeAccepted = await consumeWalletChallenge({
+      challengeId,
+      walletAddress: normalizedWallet,
+      purpose: "login",
+      message,
+      signature,
+    });
+    if (!challengeAccepted) {
       return res
         .status(401)
-        .json({ success: false, error: "Signature verification failed" });
+        .json({ success: false, error: "Wallet challenge is invalid, expired, or already used", code: "INVALID_WALLET_CHALLENGE" });
     }
 
     const allowedWallet = await AllowedWallet.findOne({
@@ -148,7 +284,7 @@ exports.loginMetaMask = async (req, res, next) => {
     allowedWallet.lastLoginAt = new Date();
     await allowedWallet.save();
 
-    return res.json({ success: true, ...issueSession(admin) });
+    return res.json({ success: true, ...issueSession(admin, "wallet") });
   } catch (err) {
     next(err);
   }
@@ -160,7 +296,7 @@ exports.loginMetaMask = async (req, res, next) => {
  */
 exports.linkWallet = async (req, res, next) => {
   try {
-    const { signature, message } = req.body;
+    const { challengeId, signature, message } = req.body;
     const walletAddress = String(req.body?.walletAddress || "").trim();
 
     if (!walletAddress || !signature || !message) {
@@ -177,11 +313,18 @@ exports.linkWallet = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Invalid wallet address" });
     }
 
-    const recoveredAddress = ethers.verifyMessage(message, signature);
-    if (recoveredAddress.toLowerCase() !== normalizedWallet) {
+    const challengeAccepted = await consumeWalletChallenge({
+      challengeId,
+      walletAddress: normalizedWallet,
+      purpose: "link",
+      message,
+      signature,
+      adminId: req.admin.id,
+    });
+    if (!challengeAccepted) {
       return res
         .status(401)
-        .json({ success: false, error: "Signature verification failed" });
+        .json({ success: false, error: "Wallet challenge is invalid, expired, or already used", code: "INVALID_WALLET_CHALLENGE" });
     }
 
     const existing = await Admin.findOne({
@@ -255,6 +398,13 @@ exports.refresh = async (req, res, next) => {
       refreshToken,
       process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET
     );
+    if (!AUTH_METHODS.has(decoded.authMethod)) {
+      return res.status(401).json({
+        success: false,
+        error: "Session must be renewed",
+        code: "SESSION_RENEWAL_REQUIRED",
+      });
+    }
 
     const admin = await Admin.findOne({ _id: decoded.id, isActive: true });
     if (!admin) {
@@ -263,8 +413,16 @@ exports.refresh = async (req, res, next) => {
         .json({ success: false, error: "Admin not found or deactivated" });
     }
 
+    if (decoded.authMethod === "wallet" && !(await isWalletAllowed(admin.walletAddress))) {
+      return res.status(403).json({
+        success: false,
+        error: "Wallet is no longer allowed to access CertChain admin",
+        code: "WALLET_NOT_ALLOWED",
+      });
+    }
+
     await blacklistToken(refreshToken, "refresh_rotation");
-    return res.json({ success: true, ...issueSession(admin) });
+    return res.json({ success: true, ...issueSession(admin, decoded.authMethod) });
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       return res.status(401).json({ success: false, error: "Refresh token expired" });

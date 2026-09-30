@@ -45,6 +45,12 @@ export type PreparedMetaMaskIssue = {
   ipfsUrl: string;
 };
 
+export type WalletChallenge = {
+  challengeId: string;
+  message: string;
+  expiresAt: string;
+};
+
 const API_BASE_URL =
   typeof window === "undefined" && process.env.SERVER_API_URL
     ? process.env.SERVER_API_URL
@@ -453,7 +459,13 @@ export const authApi = {
     return { token: payload.token, admin, refreshToken: payload.refreshToken };
   },
 
+  async createMetaMaskChallenge(walletAddress: string): Promise<WalletChallenge> {
+    const response = await apiClient.post("/auth/metamask-challenge", { walletAddress });
+    return extractResponseData<WalletChallenge>(response.data);
+  },
+
   async loginMetaMask(data: {
+    challengeId: string;
     walletAddress: string;
     signature: string;
     message: string;
@@ -471,6 +483,7 @@ export const authApi = {
   },
 
   async linkWallet(data: {
+    challengeId: string;
     walletAddress: string;
     signature: string;
     message: string;
@@ -483,6 +496,11 @@ export const authApi = {
       saveAuthSession(token, admin, getRefreshToken() || undefined);
     }
     return admin;
+  },
+
+  async createLinkWalletChallenge(walletAddress: string): Promise<WalletChallenge> {
+    const response = await apiClient.post("/auth/link-wallet-challenge", { walletAddress });
+    return extractResponseData<WalletChallenge>(response.data);
   },
 
   async logout(): Promise<void> {
@@ -776,11 +794,17 @@ export const api = {
   login: (username: string, password: string) =>
     authApi.login({ username, password }),
 
-  loginMetaMask: (walletAddress: string, signature: string, message: string) =>
-    authApi.loginMetaMask({ walletAddress, signature, message }),
+  createMetaMaskChallenge: (walletAddress: string) =>
+    authApi.createMetaMaskChallenge(walletAddress),
 
-  linkWallet: (walletAddress: string, signature: string, message: string) =>
-    authApi.linkWallet({ walletAddress, signature, message }),
+  loginMetaMask: (challengeId: string, walletAddress: string, signature: string, message: string) =>
+    authApi.loginMetaMask({ challengeId, walletAddress, signature, message }),
+
+  createLinkWalletChallenge: (walletAddress: string) =>
+    authApi.createLinkWalletChallenge(walletAddress),
+
+  linkWallet: (challengeId: string, walletAddress: string, signature: string, message: string) =>
+    authApi.linkWallet({ challengeId, walletAddress, signature, message }),
 
   seed: async () => {
     const response = await apiClient.post("/auth/seed");

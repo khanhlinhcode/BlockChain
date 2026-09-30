@@ -76,9 +76,14 @@ export default function AdminSidebar() {
     try {
       setLinkingWallet(true);
       const address = await connectWallet();
-      const message = `${t("admin.linkWalletSign")}\nAddress: ${address}\nNonce: ${Date.now()}`;
-      const signature = await signMessage(message);
-      const admin = await api.linkWallet(address, signature, message);
+      const challenge = await api.createLinkWalletChallenge(address);
+      const signature = await signMessage(challenge.message);
+      const admin = await api.linkWallet(
+        challenge.challengeId,
+        address,
+        signature,
+        challenge.message
+      );
       setLinkedWalletAddress(admin.walletAddress || address);
       toast.success(t("admin.linkWalletSuccess"));
     } catch {

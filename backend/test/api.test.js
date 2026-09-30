@@ -9,6 +9,7 @@ process.env.CONTRACT_ADDRESS = "0x1111111111111111111111111111111111111111";
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const request = require("supertest");
+const { Wallet } = require("ethers");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 
 jest.mock("../src/services/ipfsService", () => ({
@@ -110,18 +111,24 @@ jest.mock("../src/services/blockchainService", () => {
 
 const app = require("../src/app");
 const Admin = require("../src/models/Admin");
+const AllowedWallet = require("../src/models/AllowedWallet");
 const Certificate = require("../src/models/Certificate");
+const WalletChallenge = require("../src/models/WalletChallenge");
 const blockchainService = require("../src/services/blockchainService");
 const ipfsService = require("../src/services/ipfsService");
+const { keyGenerator } = require("../src/middleware/rateLimiter");
 
 let mongo;
 
 const validHash = `0x${"a".repeat(64)}`;
 const makePdf = (content = "fake pdf content") => Buffer.from(`%PDF-1.4\n${content}\n%%EOF`);
+const testWallet = new Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
 
 async function resetDb() {
   await Admin.deleteMany({});
+  await AllowedWallet.deleteMany({});
   await Certificate.deleteMany({});
+  await WalletChallenge.deleteMany({});
 }
 
 async function seedAdmin() {
@@ -150,10 +157,28 @@ async function createAdminToken() {
       username: admin.username,
       role: admin.role,
       walletAddress: admin.walletAddress,
+      authMethod: "password",
     },
     process.env.JWT_SECRET,
     { expiresIn: "8h" }
   );
+}
+
+async function allowTestWallet() {
+  return AllowedWallet.create({
+    address: testWallet.address.toLowerCase(),
+    addedBy: new mongoose.Types.ObjectId(),
+    label: "API test wallet",
+    isActive: true,
+  });
+}
+
+async function createSignedLoginChallenge() {
+  const challenge = await request(app)
+    .post("/api/auth/metamask-challenge")
+    .send({ walletAddress: testWallet.address });
+  const signature = await testWallet.signMessage(challenge.body.message);
+  return { challenge, signature };
 }
 
 async function createCertificate(overrides = {}) {
@@ -242,6 +267,126 @@ describe("Auth", () => {
   test("POST /api/auth/login missing fields returns 400", async () => {
     const res = await request(app).post("/api/auth/login").send({ username: "admin" });
     expect(res.status).toBe(400);
+  });
+
+  test("MetaMask challenge can be consumed only once", async () => {
+    await allowTestWallet();
+    const { challenge, signature } = await createSignedLoginChallenge();
+    expect(challenge.status).toBe(201);
+
+    const payload = {
+      challengeId: challenge.body.challengeId,
+      walletAddress: testWallet.address,
+      signature,
+      message: challenge.body.message,
+    };
+    const first = await request(app).post("/api/auth/login-metamask").send(payload);
+    const replay = await request(app).post("/api/auth/login-metamask").send(payload);
+
+    expect(first.status).toBe(200);
+    expect(first.body.success).toBe(true);
+    expect(replay.status).toBe(401);
+    expect(replay.body.code).toBe("INVALID_WALLET_CHALLENGE");
+  });
+
+  test("MetaMask login rejects a client-generated legacy message", async () => {
+    await allowTestWallet();
+    const message = `Sign in to CertChain Admin\nNonce: ${Date.now()}`;
+    const signature = await testWallet.signMessage(message);
+    const res = await request(app).post("/api/auth/login-metamask").send({
+      walletAddress: testWallet.address,
+      signature,
+      message,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("wallet sessions lose access and refresh authorization after allowlist removal", async () => {
+    await allowTestWallet();
+    const { challenge, signature } = await createSignedLoginChallenge();
+    const login = await request(app).post("/api/auth/login-metamask").send({
+      challengeId: challenge.body.challengeId,
+      walletAddress: testWallet.address,
+      signature,
+      message: challenge.body.message,
+    });
+    expect(login.status).toBe(200);
+
+    await AllowedWallet.deleteOne({ address: testWallet.address.toLowerCase() });
+    const access = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${login.body.token}`);
+    const refresh = await request(app)
+      .post("/api/auth/refresh")
+      .send({ refreshToken: login.body.refreshToken });
+
+    expect(access.status).toBe(403);
+    expect(access.body.code).toBe("WALLET_NOT_ALLOWED");
+    expect(refresh.status).toBe(403);
+    expect(refresh.body.code).toBe("WALLET_NOT_ALLOWED");
+  });
+
+  test("password refresh remains valid when an unrelated wallet is removed", async () => {
+    const admin = await Admin.create({
+      username: "password-admin",
+      passwordHash: "not-used-by-refresh",
+      role: "superadmin",
+    });
+    const refreshToken = jwt.sign(
+      {
+        id: admin._id,
+        username: admin.username,
+        role: admin.role,
+        authMethod: "password",
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+    await AllowedWallet.deleteMany({});
+
+    const refresh = await request(app)
+      .post("/api/auth/refresh")
+      .send({ refreshToken });
+    expect(refresh.status).toBe(200);
+    expect(refresh.body.success).toBe(true);
+  });
+
+  test("authenticated admin can complete the one-time wallet-link challenge", async () => {
+    const token = await loginAdmin();
+    const challenge = await request(app)
+      .post("/api/auth/link-wallet-challenge")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ walletAddress: testWallet.address });
+    expect(challenge.status).toBe(201);
+    const signature = await testWallet.signMessage(challenge.body.message);
+
+    const link = await request(app)
+      .post("/api/auth/link-wallet")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        challengeId: challenge.body.challengeId,
+        walletAddress: testWallet.address,
+        signature,
+        message: challenge.body.message,
+      });
+    expect(link.status).toBe(200);
+    expect(link.body.admin.walletAddress).toBe(testWallet.address.toLowerCase());
+  });
+
+  test("rate-limit identity ignores unverified bearer token claims", () => {
+    const forged = jwt.sign({ id: "attacker-controlled" }, "wrong-secret");
+    const unauthenticated = keyGenerator({
+      ip: "203.0.113.10",
+      headers: { authorization: `Bearer ${forged}` },
+    });
+    const authenticated = keyGenerator({
+      ip: "203.0.113.10",
+      headers: {},
+      admin: { id: "verified-admin" },
+    });
+
+    expect(unauthenticated).toBe("ip:203.0.113.10");
+    expect(authenticated).toBe("admin:verified-admin:203.0.113.10");
   });
 
   test("GET /api/auth/me with valid token returns admin", async () => {

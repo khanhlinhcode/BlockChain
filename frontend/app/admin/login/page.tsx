@@ -91,11 +91,11 @@ export default function AdminLoginPage() {
         await switchNetwork();
       }
 
-      const message = `Sign in to CertChain Admin\nNonce: ${Date.now()}`;
-      const signature = await signMessage(message);
+      const challenge = await api.createMetaMaskChallenge(address);
+      const signature = await signMessage(challenge.message);
 
       setStatus(t("login.txPending"));
-      await api.loginMetaMask(address, signature, message);
+      await api.loginMetaMask(challenge.challengeId, address, signature, challenge.message);
       setStatus(t("login.txConfirmed"));
       toast.success(t("login.metamaskSuccess"));
       router.push("/admin/dashboard");

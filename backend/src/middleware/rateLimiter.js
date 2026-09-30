@@ -1,5 +1,4 @@
 const rateLimit = require("express-rate-limit");
-const jwt = require("jsonwebtoken");
 
 function clientIp(req) {
   return req.ip || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
@@ -9,14 +8,7 @@ function keyGenerator(req) {
   if (process.env.NODE_ENV === "test" && req.headers["x-test-rate-limit-key"]) {
     return String(req.headers["x-test-rate-limit-key"]);
   }
-  let adminId = req.admin?.id ? String(req.admin.id) : "";
-  if (!adminId) {
-    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-    const decoded = token ? jwt.decode(token) : null;
-    if (decoded && typeof decoded === "object" && decoded.id) {
-      adminId = String(decoded.id);
-    }
-  }
+  const adminId = req.admin?.id ? String(req.admin.id) : "";
   return adminId ? `admin:${adminId}:${clientIp(req)}` : `ip:${clientIp(req)}`;
 }
 

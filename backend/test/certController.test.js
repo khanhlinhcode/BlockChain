@@ -70,6 +70,7 @@ describe("Certificate API", () => {
         username: adminPayload.username,
         role: adminPayload.role,
         walletAddress: adminPayload.walletAddress,
+        authMethod: "password",
       },
       process.env.JWT_SECRET,
       { expiresIn: "8h" }
@@ -225,6 +226,7 @@ describe("Certificate API", () => {
         username: adminPayload.username,
         role: adminPayload.role,
         walletAddress: adminPayload.walletAddress,
+        authMethod: "password",
       },
       process.env.JWT_SECRET,
       { expiresIn: -10 }

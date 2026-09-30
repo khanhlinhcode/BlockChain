@@ -53,6 +53,7 @@ const validators = {
       .withMessage("Mật khẩu là bắt buộc"),
   ],
   metamaskLogin: [
+    body("challengeId").isMongoId().withMessage("Thử thách xác thực không hợp lệ"),
     body("walletAddress").isEthereumAddress().withMessage("Địa chỉ ví không hợp lệ"),
     body("signature")
       .isString()
@@ -66,6 +67,9 @@ const validators = {
       .bail()
       .isLength({ min: 1, max: 1000 })
       .withMessage("Thông điệp ký không hợp lệ"),
+  ],
+  walletChallenge: [
+    body("walletAddress").isEthereumAddress().withMessage("Địa chỉ ví không hợp lệ"),
   ],
   wallet: [
     body("address").isEthereumAddress().withMessage("Địa chỉ ví không hợp lệ"),

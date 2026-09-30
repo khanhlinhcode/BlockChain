@@ -16,6 +16,13 @@ router.post(
   auth.login
 );
 router.post(
+  "/metamask-challenge",
+  loginLimiter,
+  validators.walletChallenge,
+  validateRequest,
+  auth.createMetaMaskLoginChallenge
+);
+router.post(
   "/login-metamask",
   loginLimiter,
   validators.metamaskLogin,
@@ -23,6 +30,14 @@ router.post(
   enforceLoginProtection,
   auditLogger("LOGIN_METAMASK", (req) => ({ walletAddress: req.body.walletAddress })),
   auth.loginMetaMask
+);
+router.post(
+  "/link-wallet-challenge",
+  verifyJWT,
+  authLimiter,
+  validators.walletChallenge,
+  validateRequest,
+  auth.createLinkWalletChallenge
 );
 router.post(
   "/link-wallet",

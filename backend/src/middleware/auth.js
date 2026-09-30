@@ -1,6 +1,9 @@
 const jwt = require("jsonwebtoken");
 const Admin = require("../models/Admin");
 const { isTokenBlacklisted } = require("../services/tokenBlacklistService");
+const { isWalletAllowed } = require("../services/walletAuthorizationService");
+
+const AUTH_METHODS = new Set(["password", "wallet"]);
 
 /**
  * JWT authentication middleware.
@@ -27,6 +30,13 @@ async function verifyJWT(req, res, next) {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!AUTH_METHODS.has(decoded.authMethod)) {
+      return res.status(401).json({
+        success: false,
+        error: "Session must be renewed",
+        code: "SESSION_RENEWAL_REQUIRED",
+      });
+    }
 
     // Verify admin still exists and is active
     const admin = await Admin.findById(decoded.id);
@@ -36,11 +46,20 @@ async function verifyJWT(req, res, next) {
         .json({ success: false, error: "Account not found or deactivated", code: "ACCOUNT_INACTIVE" });
     }
 
+    if (decoded.authMethod === "wallet" && !(await isWalletAllowed(admin.walletAddress))) {
+      return res.status(403).json({
+        success: false,
+        error: "Wallet is no longer allowed to access CertChain admin",
+        code: "WALLET_NOT_ALLOWED",
+      });
+    }
+
     req.admin = {
       id: admin._id,
       username: admin.username,
       role: admin.role,
       walletAddress: admin.walletAddress,
+      authMethod: decoded.authMethod,
     };
     req.token = token;
     next();
