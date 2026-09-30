@@ -81,7 +81,7 @@ const corsOptions = {
     return callback(err);
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Admin-Seed-Token"],
   credentials: true,
 };
 

@@ -67,6 +67,7 @@ AUDIT_LOG_BLOCK_WINDOW=10
 AUDIT_LOOKBACK_BLOCKS=1000
 DEFAULT_ADMIN_USERNAME=admin
 DEFAULT_ADMIN_PASSWORD=change_this_password
+ADMIN_SEED_TOKEN=replace_with_at_least_32_random_characters
 ```
 
 Ghi chú:
@@ -97,7 +98,9 @@ Kết quả cần có:
 Seed admin:
 
 ```bash
-curl -X POST https://certchain-api.up.railway.app/api/auth/seed
+curl -X POST \
+  -H "X-Admin-Seed-Token: $ADMIN_SEED_TOKEN" \
+  https://certchain-api.up.railway.app/api/auth/seed
 ```
 
 ## STEP C - Vercel Frontend
@@ -256,5 +259,7 @@ curl https://certchain-api.up.railway.app/api/health
 Seed admin production:
 
 ```bash
-curl -X POST https://certchain-api.up.railway.app/api/auth/seed
+curl -X POST \
+  -H "X-Admin-Seed-Token: $ADMIN_SEED_TOKEN" \
+  https://certchain-api.up.railway.app/api/auth/seed
 ```

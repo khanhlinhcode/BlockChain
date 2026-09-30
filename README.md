@@ -182,14 +182,16 @@ Hardhat local trả chain id:
 Sau khi backend chạy xong:
 
 ```bash
-curl -X POST http://localhost:5001/api/auth/seed
+curl -X POST \
+  -H "X-Admin-Seed-Token: $ADMIN_SEED_TOKEN" \
+  http://localhost:5001/api/auth/seed
 ```
 
 Tài khoản mặc định:
 
 ```txt
 Username: admin
-Password: Admin@123456
+Password: giá trị DEFAULT_ADMIN_PASSWORD trong backend/.env
 ```
 
 ### Dừng Docker
@@ -279,7 +281,8 @@ PUBLIC_FRONTEND_URL=http://localhost:3000
 NEXT_PUBLIC_FRONTEND_URL=http://localhost:3000
 BASE_URL=http://localhost:3000
 DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=Admin@123456
+DEFAULT_ADMIN_PASSWORD=replace_with_a_unique_strong_password
+ADMIN_SEED_TOKEN=replace_with_at_least_32_random_characters
 ```
 
 Không commit private key thật.
@@ -346,7 +349,9 @@ CertChain Sepolia Docker stack
 Seed admin:
 
 ```bash
-curl -X POST http://localhost:5001/api/auth/seed
+curl -X POST \
+  -H "X-Admin-Seed-Token: $ADMIN_SEED_TOKEN" \
+  http://localhost:5001/api/auth/seed
 ```
 
 ### 4. Kiểm Tra Giao Dịch Trên Sepolia
@@ -409,7 +414,8 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 BASE_URL=http://localhost:5001
 
 DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=Admin@123456
+DEFAULT_ADMIN_PASSWORD=replace_with_a_unique_strong_password
+ADMIN_SEED_TOKEN=replace_with_at_least_32_random_characters
 
 CONTRACT_DEPLOY_BLOCK=0
 AUDIT_LOOKBACK_BLOCKS=1000
@@ -509,7 +515,9 @@ npm run dev
 Seed admin:
 
 ```bash
-curl -X POST http://localhost:5001/api/auth/seed
+curl -X POST \
+  -H "X-Admin-Seed-Token: $ADMIN_SEED_TOKEN" \
+  http://localhost:5001/api/auth/seed
 ```
 
 ### Terminal 5: Frontend

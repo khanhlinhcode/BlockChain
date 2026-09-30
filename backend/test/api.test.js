@@ -3,6 +3,7 @@ process.env.JWT_SECRET = "test_jwt_secret_for_api";
 process.env.JWT_EXPIRES_IN = "8h";
 process.env.DEFAULT_ADMIN_USERNAME = "admin";
 process.env.DEFAULT_ADMIN_PASSWORD = "Admin@123456";
+process.env.ADMIN_SEED_TOKEN = "test_admin_seed_token_32_chars_minimum";
 process.env.FRONTEND_URL = "http://localhost:3000";
 process.env.CONTRACT_ADDRESS = "0x1111111111111111111111111111111111111111";
 
@@ -132,7 +133,10 @@ async function resetDb() {
 }
 
 async function seedAdmin() {
-  return request(app).post("/api/auth/seed").send({});
+  return request(app)
+    .post("/api/auth/seed")
+    .set("X-Admin-Seed-Token", process.env.ADMIN_SEED_TOKEN)
+    .send({});
 }
 
 async function loginAdmin() {
@@ -231,6 +235,12 @@ describe("Health", () => {
 });
 
 describe("Auth", () => {
+  test("POST /api/auth/seed without bootstrap token returns 401", async () => {
+    const res = await request(app).post("/api/auth/seed").send({});
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("ADMIN_SEED_UNAUTHORIZED");
+  });
+
   test("POST /api/auth/seed creates admin first time", async () => {
     const res = await seedAdmin();
     expect(res.status).toBe(201);

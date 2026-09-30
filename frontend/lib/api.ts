@@ -806,8 +806,12 @@ export const api = {
   linkWallet: (challengeId: string, walletAddress: string, signature: string, message: string) =>
     authApi.linkWallet({ challengeId, walletAddress, signature, message }),
 
-  seed: async () => {
-    const response = await apiClient.post("/auth/seed");
+  seed: async (seedToken: string) => {
+    const response = await apiClient.post(
+      "/auth/seed",
+      {},
+      { headers: { "X-Admin-Seed-Token": seedToken } }
+    );
     return extractResponseData(response.data);
   },
 

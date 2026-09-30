@@ -467,6 +467,35 @@ exports.getMe = async (req, res, next) => {
  */
 exports.seed = async (_req, res, next) => {
   try {
+    const expectedSeedToken = String(process.env.ADMIN_SEED_TOKEN || "");
+    if (expectedSeedToken.length < 32) {
+      return res.status(503).json({
+        success: false,
+        error: "Admin bootstrap is disabled",
+        code: "ADMIN_SEED_DISABLED",
+      });
+    }
+    const providedSeedToken = String(_req.headers["x-admin-seed-token"] || "");
+    const authorized =
+      providedSeedToken.length === expectedSeedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(providedSeedToken), Buffer.from(expectedSeedToken));
+    if (!authorized) {
+      return res.status(401).json({
+        success: false,
+        error: "Admin bootstrap authorization is required",
+        code: "ADMIN_SEED_UNAUTHORIZED",
+      });
+    }
+
+    const defaultPassword = String(process.env.DEFAULT_ADMIN_PASSWORD || "");
+    if (defaultPassword.length < 12) {
+      return res.status(503).json({
+        success: false,
+        error: "A strong DEFAULT_ADMIN_PASSWORD is required",
+        code: "ADMIN_SEED_PASSWORD_REQUIRED",
+      });
+    }
+
     const username = String(process.env.DEFAULT_ADMIN_USERNAME || "admin")
       .trim()
       .toLowerCase();
@@ -497,7 +526,7 @@ exports.seed = async (_req, res, next) => {
       }
     }
     admin.passwordHash = await bcrypt.hash(
-      process.env.DEFAULT_ADMIN_PASSWORD || "Admin@123456",
+      defaultPassword,
       12
     );
     await admin.save();
