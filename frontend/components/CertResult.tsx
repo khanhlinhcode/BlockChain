@@ -148,11 +148,11 @@ export default function CertResult({
     ctx.stroke();
 
     ctx.fillStyle = "#EFF6FF";
-    ctx.font = "700 52px Be Vietnam Pro, sans-serif";
+    ctx.font = "700 52px Plus Jakarta Sans, sans-serif";
     ctx.fillText(t("result.badgeTitle"), 210, 122);
 
     ctx.fillStyle = "#8BA3CC";
-    ctx.font = "500 24px Be Vietnam Pro, sans-serif";
+    ctx.font = "500 24px Plus Jakarta Sans, sans-serif";
     ctx.fillText(t("result.badgeCertId", { id: certId }), 210, 182);
     ctx.fillText(t("result.badgeRecipient", { name: cert.recipientName }), 210, 222);
     ctx.fillText(t("result.badgeIssuedBy", { org: cert.issuingOrg }), 210, 262);
@@ -174,9 +174,11 @@ export default function CertResult({
 
     return (
       <motion.section
-        className="rounded-2xl border border-[var(--teal-border)] bg-[var(--teal-glow)] p-6"
+        className="surface p-5 sm:p-6"
         initial={false}
         animate={{ opacity: 1, y: 0 }}
+        role="status"
+        aria-live="polite"
       >
         <div className="mb-5 flex items-center gap-3 text-[var(--text-primary)]">
           <Loader2 size={20} className="animate-spin text-[var(--teal)]" />
@@ -188,7 +190,7 @@ export default function CertResult({
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {steps.map((label, index) => {
             const done = verificationStep > index;
             const active = verificationStep === index;
@@ -198,7 +200,7 @@ export default function CertResult({
                 initial={false}
                 animate={{ opacity: verificationStep >= index ? 1 : 0.5, y: 0 }}
                 transition={{ delay: index * 0.08 }}
-                className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3"
+                className="flex items-center justify-between px-1 py-3"
               >
                 <span className="text-sm text-[var(--text-secondary)]">{label}</span>
                 {done ? (
@@ -218,7 +220,7 @@ export default function CertResult({
 
   if (state === "error") {
     return (
-      <section className="rounded-2xl border border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)] p-6">
+      <section className="rounded-2xl border border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)] p-5 sm:p-6" role="alert">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 text-[var(--red)]" size={20} />
           <div>
@@ -235,7 +237,7 @@ export default function CertResult({
 
   if (state === "not_found") {
     return (
-      <section className="rounded-2xl border border-[rgba(255,184,0,0.38)] bg-[rgba(255,184,0,0.1)] p-6">
+      <section className="rounded-2xl border border-[rgba(255,184,0,0.38)] bg-[rgba(255,184,0,0.1)] p-5 sm:p-6" role="status">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 text-[var(--amber)]" size={20} />
           <div>
@@ -258,15 +260,16 @@ export default function CertResult({
   return (
     <>
       <motion.section
-        className={`rounded-2xl p-6 sm:p-8 ${
-          revoked
-            ? "border border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)] shadow-[var(--glow-red)]"
-            : "border border-[rgba(0,214,143,0.3)] bg-[var(--green-glow)] shadow-[var(--glow-green)]"
-        }`}
+        className="surface-elevated overflow-hidden p-0"
         initial={false}
         animate={{ opacity: 1, y: 0 }}
+        role="status"
       >
-        <div className="flex flex-wrap items-center gap-3">
+        <div className={`flex flex-wrap items-center gap-3 border-b px-5 py-5 sm:px-7 ${
+          revoked
+            ? "border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)]"
+            : "border-[rgba(0,214,143,0.3)] bg-[var(--green-glow)]"
+        }`}>
           <div
             className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${
               revoked ? "bg-[rgba(255,77,109,0.2)]" : "bg-[rgba(0,214,143,0.2)]"
@@ -288,9 +291,8 @@ export default function CertResult({
           </h3>
         </div>
 
-        <div className="my-6 h-px bg-[var(--border)]" />
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="p-5 sm:p-7">
+        <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
           <Field label={t("common.recipient")} value={cert?.recipientName || t("common.na")} icon={<User size={14} />} full />
           <Field label={t("common.course")} value={cert?.courseName || t("common.na")} />
           <Field label={t("result.issuingOrg")} value={cert?.issuingOrg || t("common.na")} />
@@ -304,7 +306,7 @@ export default function CertResult({
               <button
                 type="button"
                 onClick={() => void copyField("id", certId)}
-                className="inline-flex items-center gap-1 text-xs text-[var(--teal)]"
+                className="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-xs text-[var(--teal)] hover:bg-[var(--teal-glow)]"
               >
                 {copiedField === "id" ? <Check size={13} /> : <Copy size={13} />}
                 {copiedField === "id" ? t("common.copied") : t("common.copy")}
@@ -321,17 +323,17 @@ export default function CertResult({
                 <button
                   type="button"
                   onClick={() => void copyField("hash", certHash)}
-                  className="inline-flex items-center gap-1 text-xs text-[var(--teal)]"
+                  className="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-xs text-[var(--teal)] hover:bg-[var(--teal-glow)]"
                 >
                   {copiedField === "hash" ? <Check size={13} /> : <Copy size={13} />}
                   {copiedField === "hash" ? t("common.copied") : t("common.copy")}
                 </button>
                 {cert?.txHash ? (
                   <a
-                    href={`https://sepolia.etherscan.io/tx/${cert.txHash}`}
+                    href={`${explorer}/tx/${cert.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-[var(--teal)]"
+                    className="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-xs text-[var(--teal)] hover:bg-[var(--teal-glow)]"
                   >
                     <ExternalLink size={13} />
                     Tx
@@ -353,7 +355,7 @@ export default function CertResult({
               <button
                 type="button"
                 onClick={() => setPdfOpen(true)}
-                className="btn-outline inline-flex items-center gap-2 px-4 py-2.5 text-sm"
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm"
               >
                 <FileText size={15} />
                 {t("result.viewDocument")}
@@ -362,7 +364,7 @@ export default function CertResult({
               <a
                 href={ipfsUrl}
                 download={`${certId}.pdf`}
-                className="btn-outline inline-flex items-center gap-2 px-4 py-2.5 text-sm"
+                className="btn-ghost inline-flex items-center gap-2 px-4 py-2.5 text-sm"
               >
                 <Download size={15} />
                 {t("result.downloadPdf")}
@@ -415,7 +417,8 @@ export default function CertResult({
               className="inline-flex items-center gap-2 rounded-full border border-[var(--teal-border)] bg-[var(--teal-glow)] px-3.5 py-1.5 text-xs text-[var(--teal)]"
               style={{ fontFamily: "var(--font-body)" }}
             >
-              ⛓ Verified directly on {chainName} blockchain
+              <CheckCircle2 size={13} aria-hidden />
+              {t("result.directChain", { chain: chainName })}
             </div>
             {contractExplorerUrl ? (
               <a
@@ -424,7 +427,7 @@ export default function CertResult({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-[var(--teal)]"
               >
-                View contract on Etherscan
+                {t("result.viewContract")}
                 <ExternalLink size={12} />
               </a>
             ) : null}
@@ -432,6 +435,7 @@ export default function CertResult({
         ) : null}
 
         <ResultActions onReset={onReset} />
+        </div>
       </motion.section>
 
       {ipfsUrl ? (
@@ -450,7 +454,7 @@ function ResultActions({ onReset }: { onReset?: () => void }) {
   const { t } = useLanguage();
 
   return (
-    <div className="mt-7 rounded-2xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-card)_76%,transparent)] p-3">
+    <div className="mt-7 border-t border-[var(--border)] pt-5">
       <p className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">
         {t("result.nextActionHint")}
       </p>
@@ -502,7 +506,7 @@ function Field({
   full?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 ${full ? "md:col-span-2" : ""}`}>
+    <div className={`border-b border-[var(--border)] py-4 ${full ? "md:col-span-2" : ""}`}>
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.11em] text-[var(--text-muted)]">
           {icon ? icon : <Hash size={12} />}

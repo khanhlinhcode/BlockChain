@@ -88,8 +88,8 @@ beforeEach(() => {
 
 test("renders tab switcher", () => {
   render(<VerifyPanel />);
-  expect(screen.getByRole("button", { name: "Certificate ID" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Upload PDF" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Certificate ID" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Upload PDF" })).toBeInTheDocument();
 });
 
 test("submit with empty ID shows validation error", async () => {
@@ -159,13 +159,13 @@ test("displays error message on API failure", () => {
 
 test("file dropzone accepts PDF and rejects non-PDF", async () => {
   render(<VerifyPanel />);
-  fireEvent.click(screen.getByRole("button", { name: "Upload PDF" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Upload PDF" }));
 
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   expect(input).toHaveAttribute("accept", "application/pdf,.pdf");
 
   const file = new File(["not pdf"], "test.txt", { type: "text/plain" });
-  fireEvent.drop(screen.getByText("Drop certificate PDF").closest("div") as HTMLElement, {
+  fireEvent.drop(screen.getByLabelText("Drop certificate PDF"), {
     dataTransfer: { files: [file], types: ["Files"] },
   });
 

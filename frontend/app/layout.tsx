@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { cookies } from "next/headers";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
+import { defaultLanguage, isLanguage, languageStorageKey } from "@/lib/i18n";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -48,19 +50,22 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const storedLanguage = cookieStore.get(languageStorageKey)?.value;
+  const initialLanguage = isLanguage(storedLanguage) ? storedLanguage : defaultLanguage;
+
   return (
     <html
-      lang="en"
+      lang={initialLanguage}
       data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={`${jakarta.variable} ${mono.variable}`}
     >
       <body>
-        <Providers>
+        <Providers initialLanguage={initialLanguage}>
           {children}
           <Footer />
         </Providers>

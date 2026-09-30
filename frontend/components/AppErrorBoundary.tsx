@@ -10,7 +10,7 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const message = error instanceof Error ? error.message : t("error.unexpected");
 
   return (
-    <div className="glass-card border-[rgba(239,68,68,0.25)] p-5 text-left">
+    <div className="surface border-[rgba(239,68,68,0.25)] p-5 text-left">
       <div className="inline-flex items-center gap-2 text-[var(--accent-red)]">
         <AlertTriangle size={16} />
         <span className="text-sm font-semibold">{t("error.title")}</span>

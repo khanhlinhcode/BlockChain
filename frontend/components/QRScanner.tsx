@@ -38,10 +38,10 @@ function drawBoundingBox(
   if (!ctx) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "#10B981";
+  ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue("--green").trim() || "#00d68f";
   ctx.lineWidth = 3;
-  ctx.shadowColor = "rgba(16, 185, 129, 0.7)";
-  ctx.shadowBlur = 10;
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = 8;
 
   ctx.beginPath();
   ctx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y);
@@ -121,12 +121,14 @@ export default function QRScanner({ onDetect, onClose, onUseFileUpload }: QRScan
                 return;
               }
             } else {
-              overlayCtx.strokeStyle = "rgba(0, 212, 255, 0.65)";
+              overlayCtx.strokeStyle = getComputedStyle(overlayCanvas).getPropertyValue("--teal").trim() || "#00e5ff";
+              overlayCtx.globalAlpha = 0.68;
               overlayCtx.lineWidth = 2;
               const boxSize = Math.min(width, height) * 0.56;
               const x = (width - boxSize) / 2;
               const y = (height - boxSize) / 2;
               overlayCtx.strokeRect(x, y, boxSize, boxSize);
+              overlayCtx.globalAlpha = 1;
             }
           }
         }
@@ -183,9 +185,9 @@ export default function QRScanner({ onDetect, onClose, onUseFileUpload }: QRScan
   }, [onDetect, t]);
 
   return (
-    <div className="glass-card p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+    <div className="glass-floating p-4 sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]">
           <Camera size={15} />
           {t("qr.title")}
         </div>
@@ -193,7 +195,7 @@ export default function QRScanner({ onDetect, onClose, onUseFileUpload }: QRScan
           <button
             type="button"
             onClick={onClose}
-            className="btn-ghost p-1.5"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-interactive)] text-[var(--text-primary)]"
             aria-label={t("qr.close")}
           >
             <X size={15} />
@@ -202,15 +204,15 @@ export default function QRScanner({ onDetect, onClose, onUseFileUpload }: QRScan
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] px-4 py-5 text-center">
+        <div className="rounded-xl border border-[rgba(255,77,109,0.3)] bg-[var(--red-glow)] px-4 py-6 text-center" role="alert">
           <CameraOff className="mx-auto mb-2 text-[var(--accent-red)]" size={30} />
           <p className="text-sm text-[var(--accent-red)]">{error}</p>
         </div>
       ) : (
-        <div className="relative rounded-xl overflow-hidden border border-[var(--border)] bg-black">
+        <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-black">
           <video
             ref={videoRef}
-            className="w-full aspect-video object-cover"
+            className="aspect-[4/5] w-full object-cover sm:aspect-video"
             playsInline
             muted
             autoPlay
@@ -219,7 +221,7 @@ export default function QRScanner({ onDetect, onClose, onUseFileUpload }: QRScan
           <canvas ref={frameCanvasRef} className="hidden" />
 
           {!ready && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/35">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/45" role="status" aria-live="polite">
               <div className="inline-flex items-center gap-2 text-sm text-white">
                 <Loader2 size={16} className="animate-spin" />
                 {t("qr.starting")}
@@ -229,14 +231,14 @@ export default function QRScanner({ onDetect, onClose, onUseFileUpload }: QRScan
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+      <div className="mt-4 flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[var(--text-muted)]">
           {t("qr.help")}
         </p>
         <button
           type="button"
           onClick={onUseFileUpload}
-          className="text-[var(--accent-teal)] hover:underline whitespace-nowrap"
+          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--teal-border)] px-3 font-semibold text-[var(--teal)] transition-colors duration-150 hover:bg-[var(--teal-glow)] sm:min-h-0 sm:border-0 sm:p-0 sm:hover:bg-transparent sm:hover:underline"
         >
           {t("qr.useUpload")}
         </button>

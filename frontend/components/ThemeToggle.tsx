@@ -24,7 +24,7 @@ export default function ThemeToggle({ showLabel = false, className = "" }: Theme
     <button
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className={`inline-flex items-center gap-2 border border-[var(--border)] bg-[var(--nav-soft-bg)] font-semibold text-[var(--text-secondary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-200 hover:border-[var(--teal-border)] hover:bg-[var(--teal-glow)] hover:text-[var(--teal)] ${showLabel ? "h-11 w-full justify-start rounded-xl px-3 text-[14px]" : "h-11 w-11 justify-center rounded-2xl px-0 text-[15px]"} ${className}`}
+      className={`inline-flex items-center gap-2 border border-[var(--border)] bg-[var(--surface-interactive)] font-semibold text-[var(--text-secondary)] transition-[color,background-color,border-color] duration-150 hover:border-[var(--teal-border)] hover:bg-[var(--teal-glow)] hover:text-[var(--teal)] ${showLabel ? "h-11 w-full justify-start rounded-xl px-3 text-[14px]" : "h-11 w-11 justify-center rounded-xl px-0 text-[15px]"} ${className}`}
       aria-label={t("theme.toggle")}
       title={isDark ? t("theme.switchLight") : t("theme.switchDark")}
     >

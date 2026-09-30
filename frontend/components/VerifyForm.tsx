@@ -76,7 +76,7 @@ export default function VerifyForm() {
             type="button"
             onClick={() => switchTab(item.id)}
             disabled={loading}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all ${
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-[color,background-color,opacity] duration-150 ${
               tab === item.id
                 ? "bg-[rgba(0,212,255,0.1)] text-[var(--accent-teal)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
@@ -118,7 +118,7 @@ export default function VerifyForm() {
       {tab === "file" && (
         <div
           {...getRootProps()}
-          className={`cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-all ${
+          className={`cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-[background-color,border-color,opacity] duration-150 ${
             isDragActive
               ? "border-[var(--accent-teal)] bg-[rgba(0,212,255,0.05)]"
               : "border-[var(--border)] hover:border-[var(--border-hover)] hover:bg-[rgba(255,255,255,0.02)]"

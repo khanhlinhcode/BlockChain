@@ -6,6 +6,7 @@ import VerifyByIdContent from "@/components/verification/VerifyByIdContent";
 import { verifyApi } from "@/lib/api";
 import { getFriendlyError } from "@/lib/errorMessages";
 import { useVerify } from "@/hooks/useVerify";
+import { useLanguage } from "@/context/LanguageContext";
 import type { VerifyResponse } from "@/types";
 
 const CHAIN_LOOKUP_TIMEOUT_MS = 10_000;
@@ -26,6 +27,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 export default function VerifyByIdPage() {
   const params = useParams<{ id?: string }>();
+  const { t } = useLanguage();
   const certId = decodeURIComponent(String(params.id || ""));
   const {
     verifyById: verifyOnChain,
@@ -42,8 +44,8 @@ export default function VerifyByIdPage() {
   const [serverStep, setServerStep] = useState("");
 
   useEffect(() => {
-    document.title = `Verify ${certId} | CertChain`;
-  }, [certId]);
+    document.title = `${t("verify.pageTitle", { id: certId })} | CertChain`;
+  }, [certId, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +63,7 @@ export default function VerifyByIdPage() {
       let chainData: VerifyResponse | null = null;
 
       try {
-        setServerStep("Kiểm tra trực tiếp trên Sepolia blockchain...");
+        setServerStep(t("verify.chainChecking"));
         chainData = await withTimeout(
           verifyOnChain(normalizedId, { backendFallback: false }),
           CHAIN_LOOKUP_TIMEOUT_MS,
@@ -77,10 +79,10 @@ export default function VerifyByIdPage() {
           return;
         }
 
-        setServerStep("Không thấy trên blockchain, đối chiếu máy chủ...");
+        setServerStep(t("verify.chainNotFound"));
       } catch {
         if (cancelled) return;
-        setServerStep("Blockchain chưa phản hồi, đối chiếu máy chủ...");
+        setServerStep(t("verify.chainUnavailable"));
         if (!chainData) {
           chainData = null;
         }
@@ -120,7 +122,7 @@ export default function VerifyByIdPage() {
     return () => {
       cancelled = true;
     };
-  }, [certId, reset, verifyOnChain]);
+  }, [certId, reset, t, verifyOnChain]);
 
   const visibleResult = hasCompletedLookup ? serverResult || chainResult : null;
   const visibleError = visibleResult ? null : serverError || chainError;

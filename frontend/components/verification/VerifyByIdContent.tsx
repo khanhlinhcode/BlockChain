@@ -28,13 +28,8 @@ export default function VerifyByIdContent({
     <main className="page-bg">
       <Navbar />
 
-      <section className="px-4 pb-20 pt-28 sm:px-6">
+      <section className="px-4 pb-20 pt-24 sm:px-6 sm:pt-28">
         <div className="mx-auto w-full max-w-3xl">
-          <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{t("verify.url")}</p>
-            <p className="mono mt-1 break-all text-sm text-[var(--teal)]">/verify/{certId}</p>
-          </div>
-
           <CertResult
             loading={loading}
             currentStep={currentStep}
@@ -43,6 +38,13 @@ export default function VerifyByIdContent({
             error={error}
             onReset={onReset}
           />
+
+          <details className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-interactive)] px-4 py-3 text-sm">
+            <summary className="cursor-pointer font-semibold text-[var(--text-secondary)]">
+              {t("verify.url")}
+            </summary>
+            <p className="mono mt-2 break-all text-xs text-[var(--teal)] sm:text-sm">/verify/{certId}</p>
+          </details>
         </div>
       </section>
     </main>

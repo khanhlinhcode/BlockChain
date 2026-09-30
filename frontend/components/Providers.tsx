@@ -7,6 +7,7 @@ import { SWRConfig } from "swr";
 import { validateAuthSessionOnLoad } from "@/lib/auth";
 import { MetaMaskProvider } from "@/context/MetaMaskContext";
 import { LanguageProvider } from "@/context/LanguageContext";
+import type { Language } from "@/lib/i18n";
 import AppErrorBoundary from "./AppErrorBoundary";
 
 function ServiceWorkerRegistrar() {
@@ -48,7 +49,13 @@ function ServiceWorkerRegistrar() {
   return null;
 }
 
-export default function Providers({ children }: { children: ReactNode }) {
+export default function Providers({
+  children,
+  initialLanguage,
+}: {
+  children: ReactNode;
+  initialLanguage: Language;
+}) {
   return (
     <ThemeProvider
       attribute="class"
@@ -56,34 +63,29 @@ export default function Providers({ children }: { children: ReactNode }) {
       enableSystem
       disableTransitionOnChange={false}
     >
-      <LanguageProvider>
-      <SWRConfig
-        value={{
-          revalidateOnFocus: false,
-          shouldRetryOnError: true,
-          dedupingInterval: 8000,
-          fetcher: async (input: string) => {
-            const response = await fetch(input, { cache: "no-store" });
-            if (!response.ok) {
-              throw new Error(`Request failed: ${response.status}`);
-            }
-            return response.json();
-          },
-        }}
-      >
-        <MetaMaskProvider>
-          <AppErrorBoundary>
-            <ServiceWorkerRegistrar />
-            {children}
-            <Toaster
-              richColors
-              closeButton
-              position="top-right"
-              duration={3500}
-            />
-          </AppErrorBoundary>
-        </MetaMaskProvider>
-      </SWRConfig>
+      <LanguageProvider initialLanguage={initialLanguage}>
+        <SWRConfig
+          value={{
+            revalidateOnFocus: false,
+            shouldRetryOnError: true,
+            dedupingInterval: 8000,
+            fetcher: async (input: string) => {
+              const response = await fetch(input, { cache: "no-store" });
+              if (!response.ok) {
+                throw new Error(`Request failed: ${response.status}`);
+              }
+              return response.json();
+            },
+          }}
+        >
+          <MetaMaskProvider>
+            <AppErrorBoundary>
+              <ServiceWorkerRegistrar />
+              {children}
+              <Toaster richColors closeButton position="top-right" duration={3500} />
+            </AppErrorBoundary>
+          </MetaMaskProvider>
+        </SWRConfig>
       </LanguageProvider>
     </ThemeProvider>
   );

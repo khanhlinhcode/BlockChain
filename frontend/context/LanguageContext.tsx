@@ -4,14 +4,12 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import {
   defaultLanguage,
-  isLanguage,
   languageStorageKey,
   translate,
   type Language,
@@ -28,32 +26,22 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-function getStoredLanguage(): Language {
-  if (typeof window === "undefined") return defaultLanguage;
-  const stored = window.localStorage.getItem(languageStorageKey);
-  return isLanguage(stored) ? stored : defaultLanguage;
-}
-
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(defaultLanguage);
-
-  useEffect(() => {
-    setLanguageState(getStoredLanguage());
-  }, []);
+export function LanguageProvider({
+  children,
+  initialLanguage = defaultLanguage,
+}: {
+  children: ReactNode;
+  initialLanguage?: Language;
+}) {
+  const [language, setLanguageState] = useState<Language>(initialLanguage);
 
   const setLanguage = useCallback((nextLanguage: Language) => {
     setLanguageState(nextLanguage);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(languageStorageKey, nextLanguage);
+      document.cookie = `${languageStorageKey}=${nextLanguage}; Path=/; Max-Age=31536000; SameSite=Lax`;
       document.documentElement.lang = nextLanguage;
     }
   }, []);
-
-  useEffect(() => {
-    if (typeof document !== "undefined") {
-      document.documentElement.lang = language;
-    }
-  }, [language]);
 
   const toggleLanguage = useCallback(() => {
     setLanguage(language === "en" ? "vi" : "en");
