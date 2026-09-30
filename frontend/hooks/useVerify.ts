@@ -6,6 +6,7 @@ import CertRegistryABI from "@/lib/abi/CertRegistry.json";
 import { verifyApi } from "@/lib/api";
 import { CHAIN_ID, CONTRACT_ADDRESS, IPFS_GATEWAY, SUPPORTED_CHAINS } from "@/lib/constants";
 import { calculateFileHash } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
 import type { Certificate, VerifyResult } from "@/types";
 
 type ContractCertificate = {
@@ -158,17 +159,20 @@ async function enrichDirectResult(
   }
 }
 
-export function normalizeDirectVerifyError(err: unknown): string {
+export function normalizeDirectVerifyError(
+  err: unknown,
+  t: (key: string) => string
+): string {
   const msg = err instanceof Error ? err.message : String(err || "");
   const lower = msg.toLowerCase();
 
   if (lower.includes("contract_address") || lower.includes("contract address")) {
-    return "Chưa cấu hình địa chỉ smart contract. Kiểm tra NEXT_PUBLIC_CONTRACT_ADDRESS.";
+    return t("verify.contractMissing");
   }
   if (lower.includes("network") || lower.includes("could not detect") || lower.includes("failed to fetch")) {
-    return "Không thể kết nối blockchain. Kiểm tra RPC/network và thử lại.";
+    return t("verify.blockchainUnavailable");
   }
-  return "Xác thực thất bại. Vui lòng thử lại.";
+  return t("verify.failed");
 }
 
 async function verifyByIdWithBackendFallback(certId: string): Promise<VerifyResult> {
@@ -188,6 +192,7 @@ async function verifyByFileWithBackendFallback(file: File): Promise<VerifyResult
 }
 
 export function useVerify() {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -213,7 +218,7 @@ export function useVerify() {
       const normalizedId = certId.trim().toUpperCase();
       const shouldFallbackToBackend = options.backendFallback !== false;
       if (!normalizedId) {
-        setError("Vui lòng nhập mã chứng chỉ.");
+        setError(t("verify.idRequired"));
         return null;
       }
 
@@ -222,17 +227,17 @@ export function useVerify() {
       setResult(null);
 
       try {
-        setCurrentStep("Kết nối blockchain...");
+        setCurrentStep(t("result.stepConnecting"));
         const contract = await getContract();
 
-        setCurrentStep("Truy vấn smart contract...");
+        setCurrentStep(t("result.stepQuerying"));
         const cert = (await contract.getCertificateById(normalizedId)) as ContractCertificate;
 
-        setCurrentStep("Xác thực kết quả...");
+        setCurrentStep(t("result.stepResult"));
         const data = buildResult(cert);
         if (!data.exists) {
           if (shouldFallbackToBackend) {
-            setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+            setCurrentStep(t("result.stepServer"));
             const fallback = await verifyByIdWithBackendFallback(normalizedId);
             setResult(fallback);
             return fallback;
@@ -250,7 +255,7 @@ export function useVerify() {
         const msg = err instanceof Error ? err.message : String(err || "");
         if (shouldFallbackToBackend) {
           try {
-            setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+            setCurrentStep(t("result.stepServer"));
             const fallback = await verifyByIdWithBackendFallback(normalizedId);
             setResult(fallback);
             return fallback;
@@ -265,7 +270,7 @@ export function useVerify() {
           return data;
         }
 
-        const friendly = normalizeDirectVerifyError(err);
+        const friendly = normalizeDirectVerifyError(err, t);
         setError(friendly);
         return null;
       } finally {
@@ -273,7 +278,7 @@ export function useVerify() {
         setCurrentStep("");
       }
     },
-    [getContract]
+    [getContract, t]
   );
 
   const verifyByFile = useCallback(
@@ -283,18 +288,18 @@ export function useVerify() {
       setResult(null);
 
       try {
-        setCurrentStep("Tính toán hash tài liệu...");
+        setCurrentStep(t("result.stepHashing"));
         const hexHash = await calculateFileHash(file);
         const bytes32Hash = `0x${hexHash}`;
 
-        setCurrentStep("Truy vấn smart contract...");
+        setCurrentStep(t("result.stepQuerying"));
         const contract = await getContract();
         const cert = (await contract.getCertificate(bytes32Hash)) as ContractCertificate;
 
-        setCurrentStep("Xác thực kết quả...");
+        setCurrentStep(t("result.stepResult"));
         const data = buildResult(cert, bytes32Hash);
         if (!data.exists) {
-          setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+          setCurrentStep(t("result.stepServer"));
           const fallback = await verifyByFileWithBackendFallback(file);
           setResult(fallback);
           return fallback;
@@ -306,7 +311,7 @@ export function useVerify() {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err || "");
         try {
-          setCurrentStep("Đối chiếu dữ liệu máy chủ...");
+          setCurrentStep(t("result.stepServer"));
           const fallback = await verifyByFileWithBackendFallback(file);
           setResult(fallback);
           return fallback;
@@ -320,7 +325,7 @@ export function useVerify() {
           return data;
         }
 
-        const friendly = normalizeDirectVerifyError(err);
+        const friendly = normalizeDirectVerifyError(err, t);
         setError(friendly);
         return null;
       } finally {
@@ -328,7 +333,7 @@ export function useVerify() {
         setCurrentStep("");
       }
     },
-    [getContract]
+    [getContract, t]
   );
 
   const verifyByHash = useCallback(
@@ -339,7 +344,7 @@ export function useVerify() {
       setResult(null);
 
       try {
-        setCurrentStep("Truy vấn smart contract...");
+        setCurrentStep(t("result.stepQuerying"));
         const contract = await getContract();
         const cert = (await contract.getCertificate(clean)) as ContractCertificate;
         const data = buildResult(cert, clean);
@@ -352,7 +357,7 @@ export function useVerify() {
           setResult(data);
           return data;
         }
-        const friendly = normalizeDirectVerifyError(err);
+        const friendly = normalizeDirectVerifyError(err, t);
         setError(friendly);
         return null;
       } finally {
@@ -360,7 +365,7 @@ export function useVerify() {
         setCurrentStep("");
       }
     },
-    [getContract]
+    [getContract, t]
   );
 
   const reset = useCallback(() => {
