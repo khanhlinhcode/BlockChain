@@ -8,7 +8,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-[var(--teal)] text-black hover:-translate-y-px hover:shadow-[0_10px_24px_rgba(0,229,255,0.14)]",
+        default:
+          "bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] hover:-translate-y-px hover:bg-[var(--button-primary-hover)] hover:shadow-[0_10px_24px_rgba(0,229,255,0.14)]",
         destructive: "bg-[var(--red)] text-white hover:bg-[color-mix(in_srgb,var(--red)_88%,white)]",
         outline:
           "border border-[var(--teal-border)] bg-transparent text-[var(--teal)] hover:bg-[var(--teal-glow)]",

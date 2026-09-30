@@ -14,6 +14,9 @@
   --teal: #00e5ff;
   --teal-glow: rgba(0, 229, 255, 0.12);
   --teal-border: rgba(0, 229, 255, 0.25);
+  --button-primary-bg: var(--teal);
+  --button-primary-fg: #020507;
+  --button-primary-hover: color-mix(in srgb, var(--teal) 88%, white);
   --green: #00d68f;
   --green-glow: rgba(0, 214, 143, 0.15);
   --red: #ff4d6d;
@@ -74,6 +77,9 @@
   --teal: #008da3;
   --teal-glow: rgba(0, 141, 163, 0.11);
   --teal-border: rgba(0, 141, 163, 0.24);
+  --button-primary-bg: #00798a;
+  --button-primary-fg: #ffffff;
+  --button-primary-hover: #006f80;
   --green: #008f68;
   --green-glow: rgba(0, 143, 104, 0.12);
   --red: #d9365b;
@@ -348,8 +354,8 @@ pre,
 }
 
 .btn-primary {
-  background: var(--teal);
-  color: #020507;
+  background: var(--button-primary-bg);
+  color: var(--button-primary-fg);
   font-family: var(--font-body), sans-serif;
   font-size: 16px;
   font-weight: 600;
@@ -366,7 +372,7 @@ pre,
 }
 
 .btn-primary:hover {
-  background: color-mix(in srgb, var(--teal) 88%, white);
+  background: var(--button-primary-hover);
   box-shadow: 0 10px 24px rgba(0, 229, 255, 0.14);
   transform: translateY(-1px);
 }
